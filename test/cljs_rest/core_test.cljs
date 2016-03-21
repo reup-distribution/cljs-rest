@@ -49,7 +49,7 @@
   (async done
     (go
       (let [payload (first payloads)
-            resource (<! (rest/create listing payload))
+            resource (<! (rest/create! listing payload))
             resource-url (item-url 1)
             expected (rest/resource resource-url
                        :ok? true
@@ -92,7 +92,7 @@
     (go
       (let [listing* (assoc listing :constructor constructor)
             payload (second payloads)
-            resource (<! (rest/create listing* payload))
+            resource (<! (rest/create! listing* payload))
             resource-url (string/upper-case (item-url 2))
             expected (rest/resource resource-url
                        :constructor constructor
@@ -163,7 +163,7 @@
       (let [url (item-url 1)
             resource (rest/resource url)
             payload {:c "d"}
-            updated (<! (rest/update resource payload))
+            updated (<! (rest/update! resource payload))
             expected (rest/resource url
                        :ok? true
                        :data (assoc payload :url url))]
@@ -179,7 +179,7 @@
 ;             resource (rest/resource url)
 ;             existing (<! (rest/read resource))
 ;             payload {:a "c"}
-;             patched (<! (rest/patch resource payload))
+;             patched (<! (rest/patch! resource payload))
 ;             expected (rest/resource url
 ;                        :ok? true
 ;                        :data (merge (:data existing) payload {:url url}))]
@@ -191,7 +191,7 @@
     (go
       (let [url (item-url 1)
             resource (rest/resource url)
-            _ (<! (rest/delete resource))
+            _ (<! (rest/delete! resource))
             lookup (<! (rest/read resource))]
         (is (= false (:ok? lookup)))
         (is (= 410 (get-in lookup [:data :status])))

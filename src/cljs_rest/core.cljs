@@ -1,5 +1,5 @@
 (ns cljs-rest.core
-  (:refer-clojure :exclude [read update])
+  (:refer-clojure :exclude [read])
   (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [clojure.string :as string]
             [cljs.core.async :refer [chan close! put! <!]]
@@ -49,11 +49,11 @@
 (defprotocol Restful
   (head [_])
   (options [_])
-  (create [_ data])
+  (create! [_ data])
   (read [_] [_ params])
-  (update [_ data])
-  (patch [_ data])
-  (delete [_]))
+  (update! [_ data])
+  (patch! [_ data])
+  (delete! [_]))
 
 ;; HEAD resource representation
 (defrecord ResourceHead [url opts ok? data]
@@ -121,21 +121,21 @@
         :params params
         :process (instance-constructor this))))
 
-  (update [this changes]
+  (update! [this changes]
     (request
       (assoc (request-options url opts)
         :method :put
         :params changes
         :process (instance-constructor this))))
 
-  (patch [this changes]
+  (patch! [this changes]
     (request
       (assoc (request-options url opts)
         :method :patch
         :params changes
         :process (instance-constructor this))))
 
-  (delete [_]
+  (delete! [_]
     (request
       (assoc (request-options url opts)
         :method :delete))))
@@ -172,7 +172,7 @@
   (options [this]
     (options (resource-options url :opts opts)))
 
-  (create [this data]
+  (create! [this data]
     (request
       (assoc (request-options url (or item-opts opts))
         :method :post
