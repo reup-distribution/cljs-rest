@@ -1,5 +1,6 @@
 (ns cljs-rest.core-test
-  (:require-macros [cljs.core.async.macros :refer [go]])
+  (:require-macros [cljs.core.async.macros :refer [go]]
+                   [cljs-rest.core :refer [async->]])
   (:require [clojure.string :as string]
             [cljs.test :refer-macros [async deftest is]]
             [cljs.core.async :refer [<!]]
@@ -195,4 +196,19 @@
             lookup (<! (rest/read resource))]
         (is (= false (:ok? lookup)))
         (is (= 410 (get-in lookup [:data :status])))
+        (done)))))
+
+(deftest async-threading
+  (async done
+    (go
+      (let [payload {}
+            data (<! (async->
+                       listing
+                       rest/read
+                       :data
+                       last
+                       (rest/update! payload)
+                       :data))
+            expected {:url (item-url 2)}]
+        (is (= expected data))
         (done)))))

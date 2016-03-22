@@ -18,4 +18,4 @@
              result# (cljs.core.async/<! chan#)]
          (if fns#
              (recur (first fns#) (next fns#) result#)
-             (ensure-channel result#))))))
+             result#)))))
