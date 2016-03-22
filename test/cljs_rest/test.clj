@@ -61,7 +61,7 @@
 
 (defn list-entries [ctx]
   (if (empty? (get-in ctx [:request :query-params]))
-      (-> entries deref vals json/encode)
+      (->> entries deref vals (remove nil?) json/encode)
       "[]"))
 
 (defn list-options [_]
