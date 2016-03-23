@@ -7,7 +7,12 @@
           `(~(first form) ~x ~@(next form))
           (list form x)))))
 
-(defmacro async-> [x & forms]
+;; `async->` is essentially the behavior of `clojure.core/->` married to
+;; `cljs.core.async.macros/go-loop`, whch itself is essentially `(go (loop ...))`.
+(defmacro async->
+  "Like clojure.core/-> except it returns a channel, and each step
+  may be a channel as well."
+  [x & forms]
   (let [x* (list 'fn '[_] (if (seq? x) `(do ~x) x))
         form-fns (map async-form->fn forms)]
     `(cljs.core.async.macros/go-loop

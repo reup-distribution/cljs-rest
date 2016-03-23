@@ -62,3 +62,19 @@ Usage:
 (rest/resource-listing url :constructor map->Foo)
 (rest/resource url :constructor map->Foo)
 ```
+
+### Sequential async: `async->`
+
+The `async->` macro, for conveniently performing sequential async calls, is similar to `clojure.core/->`, but the return value is a core async channel, and each step may return a channel as well.
+
+Example usage:
+
+```clojure
+(async->
+  some-listing
+  rest/read
+  :data
+  first
+  (assoc :foo "bar")
+  rest/update!)
+```
