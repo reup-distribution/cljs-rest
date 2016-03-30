@@ -79,6 +79,11 @@ Example usage:
   rest/update!)
 ```
 
+### Releases
+
+- 0.1.1 - `FormData` payloads are automatically sent as `multipart/form-data`
+- 0.1.0 - initial release
+
 ### License
 
 Copyright (c) 2016, ReUp Distribution Inc
