@@ -27,12 +27,25 @@
    :format (ajax/json-request-format)
    :response-format (ajax/json-response-format {:keywords? true})})
 
-(defn request [opts]
+(def multipart-format
+  {:content-type "multipart/form-data"
+   :write identity})
+
+(defn request-options [url opts]
+  (let [params (:params opts)
+        form-data? (instance? js/FormData params)
+        form-opts (when form-data?
+                    (-> opts
+                        (assoc :format multipart-format :body params)
+                        (dissoc :params)))]
+    (merge *opts* (or form-opts opts) {:uri url})))
+
+(defn request [url opts]
   (let [chan (chan)
         {:keys [error-handler process]
          :or {error-handler identity process identity}} opts]
     (ajax/ajax-request
-      (assoc opts
+      (assoc (request-options url opts)
         :handler (fn [[ok? data :as x]]
                    (when-not ok?
                      (error-handler data))
@@ -40,9 +53,6 @@
                      (put! chan processed)
                      (close! chan)))))
     chan))
-
-(defn request-options [url opts]
-  (merge *opts* opts {:uri url}))
 
 ;; REST semantics
 
@@ -59,8 +69,8 @@
 (defrecord ResourceHead [url opts ok? data]
   Restful
   (head [_]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :method :head
         :process (fn [[ok? data]]
                    (ResourceHead. url opts ok? data))
@@ -83,8 +93,8 @@
 (defrecord ResourceOptions [url opts ok? data]
   Restful
   (options [_]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :method :options
         :process (fn [[ok? data]]
                    (ResourceOptions. url opts ok? data))))))
@@ -116,28 +126,28 @@
     (read this nil))
 
   (read [this params]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :params params
         :process (instance-constructor this))))
 
   (update! [this changes]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :method :put
         :params changes
         :process (instance-constructor this))))
 
   (patch! [this changes]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :method :patch
         :params changes
         :process (instance-constructor this))))
 
   (delete! [_]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :method :delete))))
 
 (defn resource [url & {:keys [opts constructor ok? data] :or {opts {} constructor identity}}]
@@ -173,8 +183,8 @@
     (options (resource-options url :opts opts)))
 
   (create! [this data]
-    (request
-      (assoc (request-options url (or item-opts opts))
+    (request url
+      (assoc (or item-opts opts)
         :method :post
         :params data
         :process (item-constructor this))))
@@ -183,8 +193,8 @@
     (read this nil))
 
   (read [this params]
-    (request
-      (assoc (request-options url opts)
+    (request url
+      (assoc opts
         :params params
         :process (items-constructor this)))))
 

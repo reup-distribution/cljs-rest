@@ -1,6 +1,6 @@
 # cljs-rest: A ClojureScript REST client
 
-`[cljs-rest "0.1.0"]`
+`[cljs-rest "0.1.1"]`
 
 A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
@@ -78,6 +78,11 @@ Example usage:
   (assoc :foo "bar")
   rest/update!)
 ```
+
+### Releases
+
+- 0.1.1 - `FormData` payloads are automatically sent as `multipart/form-data`
+- 0.1.0 - initial release
 
 ### License
 

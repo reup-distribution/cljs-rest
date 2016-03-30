@@ -212,3 +212,12 @@
             expected {:url (item-url 2)}]
         (is (= expected data))
         (done)))))
+
+(deftest form-data
+  (let [form-data (js/FormData.)
+        opts {:params form-data}
+        actual (rest/request-options :anything opts)
+        expected-format rest/multipart-format]
+    (is (= expected-format (:format actual)))
+    (is (= form-data (:body actual)))
+    (is (false? (contains? actual :params)))))
