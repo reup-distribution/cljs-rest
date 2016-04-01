@@ -42,10 +42,11 @@
 
 (defn request [url opts]
   (let [chan (chan)
+        opts* (request-options url opts)
         {:keys [error-handler process]
-         :or {error-handler identity process identity}} opts]
+         :or {error-handler identity process identity}} opts*]
     (ajax/ajax-request
-      (assoc (request-options url opts)
+      (assoc opts*
         :handler (fn [[ok? data :as x]]
                    (when-not ok?
                      (error-handler data))
