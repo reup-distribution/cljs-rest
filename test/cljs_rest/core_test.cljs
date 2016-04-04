@@ -221,3 +221,23 @@
     (is (= expected-format (:format actual)))
     (is (= form-data (:body actual)))
     (is (false? (contains? actual :params)))))
+
+(deftest error-handler
+  (async done
+    (go
+      (let [error-state (atom nil)
+            listing (rest/resource-listing "http://localhost:4000/does-not-exist/"
+                      :opts {:error-handler #(reset! error-state %)})
+            resources (<! (rest/read listing))]
+        (is (= 404 (:status @error-state)))
+        (done)))))
+
+(deftest default-error-handler
+  (async done
+    (go
+      (let [error-state (atom nil)
+            listing (rest/resource-listing "http://localhost:4000/does-not-exist/")]
+        (binding [rest/*opts* (assoc rest/*opts* :error-handler #(reset! error-state %))]
+          (let [resources (<! (rest/read listing))]
+            (is (= 404 (:status @error-state)))
+            (done)))))))
