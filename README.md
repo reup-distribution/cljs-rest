@@ -1,6 +1,6 @@
 # cljs-rest: A ClojureScript REST client
 
-`[cljs-rest "0.1.2"]`
+`[cljs-rest "0.1.3"]`
 
 A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
@@ -79,8 +79,29 @@ Example usage:
   rest/update!)
 ```
 
+If any step in the async sequence returns an instance of `Error`, that will be the final value and subsequent steps will not  be called. Example:
+
+```clojure
+(defn response-error [listing]
+  (if (:ok? listing)
+      listing
+      (ex-info "Request Error" listing)))
+
+(async->
+  some-listing
+  rest/read
+  response-error
+  ;; If the request fails, the `ExceptionInfo` returned will be the final value,
+  ;; and none of the following calls will be made:
+  :data
+  first
+  whatever)
+```
+
 ### Releases
 
+- 0.1.3 - Any step in `async->` returning an instance of `Error` will short-circuit the chain
+- 0.1.2 - Bugfix: when present, `:error-handler` in `cljs-rest.core/*opts*` will be called for error responses
 - 0.1.1 - `FormData` payloads are automatically sent as `multipart/form-data`
 - 0.1.0 - initial release
 

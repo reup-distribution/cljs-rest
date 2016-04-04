@@ -198,21 +198,6 @@
         (is (= 410 (get-in lookup [:data :status])))
         (done)))))
 
-(deftest async-threading
-  (async done
-    (go
-      (let [payload {}
-            data (<! (async->
-                       listing
-                       rest/read
-                       :data
-                       last
-                       (rest/update! payload)
-                       :data))
-            expected {:url (item-url 2)}]
-        (is (= expected data))
-        (done)))))
-
 (deftest form-data
   (let [form-data (js/FormData.)
         opts {:params form-data}
@@ -241,3 +226,56 @@
           (let [resources (<! (rest/read listing))]
             (is (= 404 (:status @error-state)))
             (done)))))))
+
+;; Async threading
+
+(deftest async-threading
+  (async done
+    (go
+      (let [payload {}
+            data (<! (async->
+                       listing
+                       rest/read
+                       :data
+                       last
+                       (rest/update! payload)
+                       :data))
+            expected {:url (item-url 2)}]
+        (is (= expected data))
+        (done)))))
+
+(def e (ex-info "welp" {}))
+(def returns-throwable (constantly e))
+
+(deftest async-error-short-circuit
+  (async done
+    (go
+      (let [call-count (atom 0)
+            should-not-be-called (fn [_] (swap! call-count inc))
+            data (try
+                   (<! (async->
+                         :whatever
+                         returns-throwable
+                         should-not-be-called))
+                   (catch :default _ nil))]
+        (is (= data e))
+        (is (= 0 @call-count))
+        (done)))))
+
+(deftest async-nested-error-short-circuit
+  (async done
+    (go
+      (let [call-count (atom 0)
+            should-not-be-called (fn [_] (swap! call-count inc))
+            nested (fn [_] (async->
+                             :nested
+                             returns-throwable))
+            data (try
+                   (<! (async->
+                         :whatever
+                         nested
+                         should-not-be-called))
+                   (catch :default _ nil))]
+        (is (= data e))
+        (is (= 0 @call-count))
+        (done)))))
