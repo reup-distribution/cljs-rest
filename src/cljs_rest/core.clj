@@ -20,7 +20,8 @@
         fns# (list ~@form-fns)
         prev-result# nil]
        (let [chan# (ensure-channel (f# prev-result#))
-             result# (cljs.core.async/<! chan#)]
-         (if fns#
+             result# (cljs.core.async/<! chan#)
+             error?# (instance? js/Error result#)]
+         (if (and (not error?#) fns#)
              (recur (first fns#) (next fns#) result#)
              result#)))))
