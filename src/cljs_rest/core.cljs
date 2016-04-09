@@ -112,9 +112,11 @@
   RestfulInstance
   (instance-constructor [_]
     (fn [[ok? item]]
-      (let [constructed (constructor item)
-            url (:url constructed)]
-        (Resource. url opts constructor ok? constructed))))
+      (if ok?
+          (let [constructed (constructor item)
+                url (:url constructed)]
+            (Resource. url opts constructor ok? constructed))
+          (Resource. url opts constructor ok? item))))
 
   Restful
   (head [_]
@@ -171,8 +173,8 @@
   (items-constructor [this]
     (fn [[ok? data]]
       (if ok?
-          (let [constructor (item-constructor this)
-                constructed (map #(constructor [ok? %]) data)]
+          (let [constructor* (item-constructor this)
+                constructed (map #(constructor* [ok? %]) data)]
             (ResourceListing. url opts item-opts constructor ok? constructed))
           (ResourceListing. url opts item-opts constructor ok? data))))
 
