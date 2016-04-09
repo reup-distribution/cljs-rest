@@ -121,6 +121,25 @@
         (is (= (:data resources) expected))
         (done)))))
 
+(deftest listing-multiple-read-construction
+  (async done
+    (go
+      (let [listing* (assoc listing :constructor constructor)
+            resources (<! (rest/read listing*))
+            second-read (<! (rest/read resources))
+            urls [(item-url 1) (item-url 2)]
+            expected (map-indexed
+                       (fn [i payload]
+                         (let [url (string/upper-case (nth urls i))
+                               data (constructor (assoc payload :url url))]
+                           (rest/resource url
+                             :constructor constructor
+                             :data data
+                             :ok? true)))
+                       payloads)]
+        (is (= (:data second-read) expected))
+        (done)))))
+
 (deftest instance-read
   (async done
     (go
@@ -156,6 +175,15 @@
             instance (<! (rest/read resource))]
         (is (= false (:ok? instance)))
         (is (= 404 (get-in instance [:data :status])))
+        (done)))))
+
+(deftest instance-error-retains-url
+  (async done
+    (go
+      (let [url (item-url 3)
+            resource (rest/resource url)
+            instance (<! (rest/read resource))]
+        (is (= url (:url instance)))
         (done)))))
 
 (deftest instance-update
