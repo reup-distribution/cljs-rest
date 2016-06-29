@@ -159,11 +159,32 @@
 ;; Listing
 
 (defprotocol RestfulListing
+  (first-item [_] [_ params])
   (item-constructor [_])
   (items-constructor [_]))
 
 (defrecord ResourceListing [url opts item-opts constructor ok? data]
   RestfulListing
+  (first-item [this] (first-item this nil))
+
+  (first-item [this params]
+    (go
+      (let [resources (<! (read this params))
+            {:keys [ok? data]} resources]
+        (cond
+          (not ok?)
+          resources
+
+          (empty? data)
+          (resource url
+            :opts opts
+            :constructor constructor
+            :ok? false
+            :data {:status 404})
+
+          :else
+          (first data)))))
+
   (item-constructor [_]
     (fn [[ok? item]]
       (let [constructed (constructor item)

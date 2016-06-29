@@ -88,6 +88,28 @@
         (is (= 404 (get-in resources [:data :status])))
         (done)))))
 
+(deftest listing-first-item
+  (async done
+    (go
+      (let [resource (<! (rest/first-item listing))
+            url-1 (item-url 1)
+            data-1 (assoc (first payloads) :url url-1)
+            expected (rest/resource url-1
+                       :ok? true
+                       :data data-1)]
+        (is (= expected resource))
+        (done)))))
+
+
+(deftest listing-first-item-empty-error
+  (async done
+    (go
+      (let [resources (<! (rest/first-item listing {:empty "results"}))
+            expected (list)]
+        (is (= false (:ok? resources)))
+        (is (= 404 (get-in resources [:data :status])))
+        (done)))))
+
 (deftest listing-create-construction
   (async done
     (go
