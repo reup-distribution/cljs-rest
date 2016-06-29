@@ -1,6 +1,6 @@
 # cljs-rest: A ClojureScript REST client
 
-`[cljs-rest "0.1.4"]`
+`[cljs-rest "0.1.5"]`
 
 A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
@@ -30,6 +30,9 @@ A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
   (<! (rest/create entries {:title "Foo" :body "Lorem"}))
   ;; #cljs-rest.core.Resource{:ok? true :data {:url "https://api.whatever.org/entries/1/" :title "Foo"} ...}
+
+  (<! (rest/first-item entries))
+  ;; #cljs-rest.core.Resource{:ok? true :data {...}}
 
   ;; And so on...
 
@@ -100,6 +103,7 @@ If any step in the async sequence returns an instance of `Error`, that will be t
 
 ### Releases
 
+- 0.1.5 - `ResourceListing` provides a `first-item` convenience method
 - 0.1.4
     - Fixed an issue where requests for `Resource` instances would drop `:url`
     - Fixed an issue where reading multiple times from a `ResourceListing` with a `:constructor` specified would corrupt results

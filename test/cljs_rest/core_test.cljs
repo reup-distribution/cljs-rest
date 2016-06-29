@@ -88,6 +88,46 @@
         (is (= 404 (get-in resources [:data :status])))
         (done)))))
 
+(deftest listing-first-item
+  (async done
+    (go
+      (let [resource (<! (rest/first-item listing))
+            url-1 (item-url 1)
+            data-1 (assoc (first payloads) :url url-1)
+            expected (rest/resource url-1
+                       :ok? true
+                       :data data-1)]
+        (is (= expected resource))
+        (done)))))
+
+(deftest listing-first-item-empty-error
+  (async done
+    (go
+      (let [resources (<! (rest/first-item listing {:empty "results"}))]
+        (is (= false (:ok? resources)))
+        (is (= 404 (get-in resources [:data :status])))
+        (done)))))
+
+(deftest listing-first-item-empty-error-handler
+  (async done
+    (go
+      (let [error-handled (atom nil)
+            error-handler (fn [res] (reset! error-handled res))
+            with-error-handler (assoc-in listing [:opts :error-handler] error-handler)
+            resources (<! (rest/first-item with-error-handler {:empty "results"}))]
+        (is (= 404 (:status @error-handled)))
+        (done)))))
+
+(deftest listing-first-item-empty-default-error-handler
+  (async done
+    (go
+      (let [error-handled (atom nil)
+            error-handler (fn [res] (reset! error-handled res))]
+        (binding [rest/*opts* (assoc rest/*opts* :error-handler error-handler)]
+          (let [resources (<! (rest/first-item listing {:empty "results"}))]
+            (is (= 404 (:status @error-handled)))
+            (done)))))))
+
 (deftest listing-create-construction
   (async done
     (go
