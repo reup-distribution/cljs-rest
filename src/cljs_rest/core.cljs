@@ -173,7 +173,8 @@
             {:keys [ok? data]} resources
             no-items? (empty? data)
             no-items-data (when no-items? {:status 404})
-            error-handler (:error-handler opts (fn [_]))]
+            opts* (request-options url opts)
+            error-handler (:error-handler opts* (fn [_]))]
         (cond
           (not ok?)
           resources
