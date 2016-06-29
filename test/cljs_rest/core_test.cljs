@@ -100,7 +100,6 @@
         (is (= expected resource))
         (done)))))
 
-
 (deftest listing-first-item-empty-error
   (async done
     (go
@@ -108,6 +107,17 @@
             expected (list)]
         (is (= false (:ok? resources)))
         (is (= 404 (get-in resources [:data :status])))
+        (done)))))
+
+(deftest listing-first-item-empty-error-handler
+  (async done
+    (go
+      (let [error-handled (atom nil)
+            error-handler (fn [res] (reset! error-handled res))
+            with-error-handler (assoc-in listing [:opts :error-handler] error-handler)
+            resources (<! (rest/first-item with-error-handler {:empty "results"}))
+            expected (list)]
+        (is (= 404 (:status @error-handled)))
         (done)))))
 
 (deftest listing-create-construction

@@ -170,17 +170,22 @@
   (first-item [this params]
     (go
       (let [resources (<! (read this params))
-            {:keys [ok? data]} resources]
+            {:keys [ok? data]} resources
+            no-items? (empty? data)
+            no-items-data (when no-items? {:status 404})
+            error-handler (:error-handler opts (fn [_]))]
         (cond
           (not ok?)
           resources
 
-          (empty? data)
-          (resource url
-            :opts opts
-            :constructor constructor
-            :ok? false
-            :data {:status 404})
+          no-items?
+          (do
+            (error-handler no-items-data)
+            (resource url
+              :opts opts
+              :constructor constructor
+              :ok? false
+              :data no-items-data))
 
           :else
           (first data)))))
