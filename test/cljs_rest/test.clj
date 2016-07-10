@@ -5,6 +5,7 @@
             [cheshire.generate :as generate]
             [compojure.core :refer [defroutes ANY]]
             [liberator.core :refer [defresource]]
+            [liberator.representation :refer [ring-response]]
             [ring.adapter.jetty :refer [run-jetty]]
             [ring.middleware.cors :refer [wrap-cors]]
             [ring.middleware.params :refer [wrap-params]])
@@ -64,8 +65,23 @@
       (->> entries deref vals (remove nil?) json/encode)
       "[]"))
 
+(defn json-response
+  ([body] (json-response 200 body))
+  ([status body]
+    (ring-response
+      {:status status
+       :headers {"Content-Type" "application/json"}
+       :body (json/encode body)})))
+
 (defn list-options [_]
-  (json/encode {:name "Entries"}))
+  (json-response {:name "Entries"}))
+
+(def status->error
+  {404 "Not found"
+   410 "Gone"})
+
+(defn handle-status [status & _]
+  (json-response status {:error (status->error status)}))
 
 (defresource list-resource
   :available-media-types ["*" "application/json"]
@@ -80,6 +96,7 @@
   :post-redirect? true
   :location #(build-entry-url (get % :request) (get % ::id))
   :handle-ok list-entries
+  :handle-not-found (partial handle-status 404)
   :handle-options list-options)
 
 (defn entry [ctx]
@@ -97,6 +114,8 @@
   :existed? (fn [_] (nil? (get @entries id ::sentinel)))
   :available-media-types ["*" "application/json"]
   :handle-ok (fn [_] (json/encode (get @entries id)))
+  :handle-not-found (partial handle-status 404)
+  :handle-gone (partial handle-status 410)
   :delete! (fn [_] (dosync (alter entries assoc id nil)))
   :malformed? #(parse-json % ::data)
   :can-put-to-missing? false

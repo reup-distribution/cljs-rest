@@ -2,11 +2,21 @@
   (:require-macros [cljs.core.async.macros :refer [go]]
                    [cljs-rest.core :refer [async->]])
   (:require [clojure.string :as string]
-            [cljs.test :refer-macros [async deftest is]]
-            [cljs.core.async :refer [<!]]
+            [cljs.test :refer-macros [async deftest is use-fixtures]]
+            [cljs.core.async :refer [<! chan]]
             [cljs-rest.core :as rest]))
 
-(def listing-url "http://localhost:4000/entries/")
+(def default-config @rest/config)
+
+(use-fixtures :each
+  {:after (fn [] (reset! rest/config default-config))})
+
+(defn configure-error-chan! []
+  (let [error-chan (chan)]
+    (swap! rest/config assoc :error-chan error-chan)
+    error-chan))
+
+(def listing-url "http://0.0.0.0:4000/entries/")
 
 (defn item-url [n]
   (str listing-url n "/"))
@@ -32,7 +42,7 @@
     (go
       (let [head (<! (rest/head listing))]
         (is (map? head))
-        (is (= "0" (get-in head [:data :content-length])))
+        (is (= "0" (get-in head [:headers :content-length])))
         (done)))))
 
 (deftest listing-options
@@ -40,10 +50,8 @@
     (go
       (let [options (<! (rest/options listing))
             alt (<! (rest/options options))
-            expected (rest/resource-options listing-url
-                       :ok? true
-                       :data {:name "Entries"})]
-        (is (= options alt expected))
+            expected {:name "Entries"}]
+        (is (= expected (:body options) (:body alt)))
         (done)))))
 
 (deftest listing-create
@@ -52,31 +60,26 @@
       (let [payload (first payloads)
             resource (<! (rest/create! listing payload))
             resource-url (item-url 1)
-            expected (rest/resource resource-url
-                       :ok? true
-                       :data (assoc payload :url resource-url))]
-        (is (= resource expected))
+            expected (assoc payload :url resource-url)]
+        (is (= expected (:data resource)))
+        (is (= resource-url (:url resource)))
         (done)))))
 
 (deftest listing-read
   (async done
     (go
       (let [resources (<! (rest/read listing))
-            url-1 (item-url 1)
-            data-1 (assoc (first payloads) :url url-1)
-            expected (list
-                       (rest/resource url-1
-                         :ok? true
-                         :data data-1))]
-        (is (= (:data resources) expected))
+            first-resource (first (:resources resources))
+            expected (assoc (first payloads) :url (item-url 1))]
+        (is (= expected (:data first-resource)))
+        (is (= (:url expected) (:url first-resource)))
         (done)))))
 
 (deftest listing-read-params
   (async done
     (go
-      (let [resources (<! (rest/read listing {:empty "results"}))
-            expected (list)]
-        (is (= (:data resources) (list)))
+      (let [resources (<! (rest/read listing {:empty "results"}))]
+        (is (= (list) (:resources resources)))
         (done)))))
 
 (deftest listing-error
@@ -84,49 +87,45 @@
     (go
       (let [listing (rest/resource-listing "http://localhost:4000/does-not-exist/")
             resources (<! (rest/read listing))]
-        (is (= false (:ok? resources)))
-        (is (= 404 (get-in resources [:data :status])))
+        (is (= false (:success resources)))
+        (is (= 404 (:status resources)))
         (done)))))
 
-(deftest listing-first-item
+(deftest listing-error-chan
   (async done
     (go
-      (let [resource (<! (rest/first-item listing))
-            url-1 (item-url 1)
-            data-1 (assoc (first payloads) :url url-1)
-            expected (rest/resource url-1
-                       :ok? true
-                       :data data-1)]
-        (is (= expected resource))
+      (let [error-chan (configure-error-chan!)
+            listing (rest/resource-listing "http://localhost:4000/does-not-exist/")
+            resources (<! (rest/read listing))
+            error (<! error-chan)]
+        (is (= false (:success error)))
+        (is (= 404 (:status error)))
         (done)))))
 
-(deftest listing-first-item-empty-error
+(deftest listing-first-resource
   (async done
     (go
-      (let [resources (<! (rest/first-item listing {:empty "results"}))]
-        (is (= false (:ok? resources)))
-        (is (= 404 (get-in resources [:data :status])))
+      (let [resource (<! (rest/first-resource listing))
+            expected (assoc (first payloads) :url (item-url 1))]
+        (is (= expected (:data resource)))
         (done)))))
 
-(deftest listing-first-item-empty-error-handler
+(deftest listing-first-resource-empty-error
   (async done
     (go
-      (let [error-handled (atom nil)
-            error-handler (fn [res] (reset! error-handled res))
-            with-error-handler (assoc-in listing [:opts :error-handler] error-handler)
-            resources (<! (rest/first-item with-error-handler {:empty "results"}))]
-        (is (= 404 (:status @error-handled)))
+      (let [resource (<! (rest/first-resource listing {:empty "results"}))]
+        (is (= false (:success resource)))
+        (is (= 404 (:status resource)))
         (done)))))
 
-(deftest listing-first-item-empty-default-error-handler
+(deftest listing-first-resource-empty-error-chan
   (async done
     (go
-      (let [error-handled (atom nil)
-            error-handler (fn [res] (reset! error-handled res))]
-        (binding [rest/*opts* (assoc rest/*opts* :error-handler error-handler)]
-          (let [resources (<! (rest/first-item listing {:empty "results"}))]
-            (is (= 404 (:status @error-handled)))
-            (done)))))))
+      (let [error-chan (configure-error-chan!)
+            resources (<! (rest/first-resource listing {:empty "results"}))
+            error (<! error-chan)]
+        (is (= 404 (:status error)))
+        (done)))))
 
 (deftest listing-create-construction
   (async done
@@ -134,13 +133,9 @@
       (let [listing* (assoc listing :constructor constructor)
             payload (second payloads)
             resource (<! (rest/create! listing* payload))
-            resource-url (string/upper-case (item-url 2))
-            expected (rest/resource resource-url
-                       :constructor constructor
-                       :ok? true
-                       :data {:url resource-url
-                              :a "B"})]
-        (is (= resource expected)))
+            expected {:url (string/upper-case (item-url 2))
+                      :a "B"}]
+        (is (= expected (:data resource))))
       (done))))
 
 (deftest listing-read-construction
@@ -151,14 +146,11 @@
             urls [(item-url 1) (item-url 2)]
             expected (map-indexed
                        (fn [i payload]
-                         (let [url (string/upper-case (nth urls i))
-                               data (constructor (assoc payload :url url))]
-                           (rest/resource url
-                             :constructor constructor
-                             :data data
-                             :ok? true)))
-                       payloads)]
-        (is (= (:data resources) expected))
+                         (let [url (string/upper-case (nth urls i))]
+                           (constructor (assoc payload :url url))))
+                       payloads)
+            data (map :data (:resources resources))]
+        (is (= expected data))
         (done)))))
 
 (deftest listing-multiple-read-construction
@@ -170,14 +162,11 @@
             urls [(item-url 1) (item-url 2)]
             expected (map-indexed
                        (fn [i payload]
-                         (let [url (string/upper-case (nth urls i))
-                               data (constructor (assoc payload :url url))]
-                           (rest/resource url
-                             :constructor constructor
-                             :data data
-                             :ok? true)))
-                       payloads)]
-        (is (= (:data second-read) expected))
+                         (let [url (string/upper-case (nth urls i))]
+                           (constructor (assoc payload :url url))))
+                       payloads)
+            data (map :data (:resources second-read))]
+        (is (= expected data))
         (done)))))
 
 (deftest instance-read
@@ -186,25 +175,19 @@
       (let [url (item-url 1)
             resource (rest/resource url)
             instance (<! (rest/read resource))
-            expected (rest/resource url
-                       :ok? true
-                       :data (assoc (first payloads) :url url))]
-        (is (= instance expected))
+            expected (assoc (first payloads) :url url)]
+        (is (= expected (:data instance)))
         (done)))))
 
 (deftest instance-construction
   (async done
     (go
       (let [url (item-url 2)
-            upper-url (string/upper-case url)
             resource (rest/resource url :constructor constructor)
             instance (<! (rest/read resource))
-            expected (rest/resource upper-url
-                       :constructor constructor
-                       :ok? true
-                       :data {:url upper-url
-                              :a "B"})]
-        (is (= instance expected))
+            expected {:url (string/upper-case url)
+                      :a "B"}]
+        (is (= expected (:data instance)))
         (done)))))
 
 (deftest instance-error
@@ -213,8 +196,8 @@
       (let [url (item-url 3)
             resource (rest/resource url)
             instance (<! (rest/read resource))]
-        (is (= false (:ok? instance)))
-        (is (= 404 (get-in instance [:data :status])))
+        (is (= false (:success instance)))
+        (is (= 404 (:status instance)))
         (done)))))
 
 (deftest instance-error-retains-url
@@ -233,10 +216,8 @@
             resource (rest/resource url)
             payload {:c "d"}
             updated (<! (rest/update! resource payload))
-            expected (rest/resource url
-                       :ok? true
-                       :data (assoc payload :url url))]
-        (is (= updated expected))
+            expected (assoc payload :url url)]
+        (is (= expected (:data updated)))
         (done)))))
 
 ;; PhantomJS does not send the request body for PATCH:
@@ -249,10 +230,8 @@
 ;             existing (<! (rest/read resource))
 ;             payload {:a "c"}
 ;             patched (<! (rest/patch! resource payload))
-;             expected (rest/resource url
-;                        :ok? true
-;                        :data (merge (:data existing) payload {:url url}))]
-;         (is (= patched expected))
+;             expected (merge (:data existing) payload {:url url})]
+;         (is (= expected (:data patched)))
 ;         (done)))))
 
 (deftest instance-delete
@@ -260,40 +239,32 @@
     (go
       (let [url (item-url 1)
             resource (rest/resource url)
-            _ (<! (rest/delete! resource))
+            deletion (<! (rest/delete! resource))
             lookup (<! (rest/read resource))]
-        (is (= false (:ok? lookup)))
-        (is (= 410 (get-in lookup [:data :status])))
+        (is (= true (:success deletion)))
+        (is (= false (:success lookup)))
+        (is (= 410 (:status lookup)))
         (done)))))
 
-(deftest form-data
-  (let [form-data (js/FormData.)
-        opts {:params form-data}
-        actual (rest/request-options :anything opts)
-        expected-format rest/multipart-format]
-    (is (= expected-format (:format actual)))
-    (is (= form-data (:body actual)))
-    (is (false? (contains? actual :params)))))
+; (deftest form-data
+;   (let [form-data (js/FormData.)
+;         opts {:params form-data}
+;         actual (rest/request-options :anything opts)
+;         expected-format rest/multipart-format]
+;     (is (= expected-format (:format actual)))
+;     (is (= form-data (:body actual)))
+;     (is (false? (contains? actual :params)))))
 
-(deftest error-handler
+(deftest per-request-error-chan
   (async done
     (go
-      (let [error-state (atom nil)
+      (let [error-chan (chan)
             listing (rest/resource-listing "http://localhost:4000/does-not-exist/"
-                      :opts {:error-handler #(reset! error-state %)})
-            resources (<! (rest/read listing))]
-        (is (= 404 (:status @error-state)))
+                      :opts {:error-chan error-chan})
+            resources (<! (rest/read listing))
+            error (<! error-chan)]
+        (is (= 404 (:status error)))
         (done)))))
-
-(deftest default-error-handler
-  (async done
-    (go
-      (let [error-state (atom nil)
-            listing (rest/resource-listing "http://localhost:4000/does-not-exist/")]
-        (binding [rest/*opts* (assoc rest/*opts* :error-handler #(reset! error-state %))]
-          (let [resources (<! (rest/read listing))]
-            (is (= 404 (:status @error-state)))
-            (done)))))))
 
 ;; Async threading
 
@@ -304,7 +275,7 @@
             data (<! (async->
                        listing
                        rest/read
-                       :data
+                       :resources
                        last
                        (rest/update! payload)
                        :data))
@@ -320,12 +291,10 @@
     (go
       (let [call-count (atom 0)
             should-not-be-called (fn [_] (swap! call-count inc))
-            data (try
-                   (<! (async->
-                         :whatever
-                         returns-throwable
-                         should-not-be-called))
-                   (catch :default _ nil))]
+            data (<! (async->
+                       :whatever
+                       returns-throwable
+                       should-not-be-called))]
         (is (= data e))
         (is (= 0 @call-count))
         (done)))))
@@ -338,12 +307,10 @@
             nested (fn [_] (async->
                              :nested
                              returns-throwable))
-            data (try
-                   (<! (async->
-                         :whatever
-                         nested
-                         should-not-be-called))
-                   (catch :default _ nil))]
+            data (<! (async->
+                       :whatever
+                       nested
+                       should-not-be-called))]
         (is (= data e))
         (is (= 0 @call-count))
         (done)))))
