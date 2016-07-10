@@ -3,7 +3,7 @@
                    [cljs-rest.core :refer [async->]])
   (:require [clojure.string :as string]
             [cljs.test :refer-macros [async deftest is use-fixtures]]
-            [cljs.core.async :refer [<! chan]]
+            [cljs.core.async :refer [<! timeout]]
             [cljs-rest.core :as rest]))
 
 (def default-config @rest/config)
@@ -12,7 +12,7 @@
   {:after (fn [] (reset! rest/config default-config))})
 
 (defn configure-error-chan! []
-  (let [error-chan (chan)]
+  (let [error-chan (timeout 1000)]
     (swap! rest/config assoc :error-chan error-chan)
     error-chan))
 
@@ -258,7 +258,7 @@
 (deftest per-request-error-chan
   (async done
     (go
-      (let [error-chan (chan)
+      (let [error-chan (timeout 1000)
             listing (rest/resource-listing "http://localhost:4000/does-not-exist/"
                       :opts {:error-chan error-chan})
             resources (<! (rest/read listing))
