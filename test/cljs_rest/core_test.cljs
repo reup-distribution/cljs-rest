@@ -246,14 +246,15 @@
         (is (= 410 (:status lookup)))
         (done)))))
 
-; (deftest form-data
-;   (let [form-data (js/FormData.)
-;         opts {:params form-data}
-;         actual (rest/request-options :anything opts)
-;         expected-format rest/multipart-format]
-;     (is (= expected-format (:format actual)))
-;     (is (= form-data (:body actual)))
-;     (is (false? (contains? actual :params)))))
+(deftest multipart-data
+  (let [multipart (rest/MultipartParams {:a "b"})
+        ordered (rest/OrderedMultipartParams [[:a "b"]])
+        actual-multipart (rest/request-options :anything {:params multipart})
+        actual-ordered (rest/request-options :anything {:params ordered})]
+    (is (= (seq multipart) (:multipart-params actual-multipart)))
+    (is (= ordered (:multipart-params actual-ordered)))
+    (is (false? (contains? actual-multipart :params)))
+    (is (false? (contains? actual-ordered :params)))))
 
 (deftest per-request-error-chan
   (async done
