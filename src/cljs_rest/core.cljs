@@ -39,34 +39,31 @@
   (extend-protocol InfersRequestOptions
     MyTransitType
     (-opts [_] {:accept \"application/transit+json\"})
-    (-params-key [_] :transit-params)
-    (-params [this] this))"
+    (-params [this] {:transit-params this}))"
 
   (-opts [_] "Returns arbitrary request options for params type")
-  (-params-key [_] "Returns the cljs-http params key for request options")
-  (-params [_] "Returns the cljs-http params for request options"))
+  (-params [_] "Returns a map of cljs-http params for request options"))
 
 (extend-protocol InfersRequestOptions
   js/FormData
-  (-params-key [_] :body)
+  (-params [form-data] {:body form-data})
 
   nil
-  (-params-key [_] nil)
+  (-params [_] nil)
 
   default
   (-opts [x] (request-defaults x))
-  (-params-key [x]
+  (-params [x]
     ;; The conversion to JSON or similar serializations depends on `clj->js`,
     ;; which for our purposes is restricted to types satisfying ICollection.
-    (if (coll? x)
-        (collection-format->params-key (:collection-format @config) :params)
-        :params))
-  (-params [x] x))
+    (let [k (if (coll? x)
+                (collection-format->params-key (:collection-format @config) :params)
+                :params)]
+      {k x})))
 
 (defrecord MultipartParams []
   InfersRequestOptions
-  (-params-key [_] :multipart-params)
-  (-params [this] (seq this)))
+  (-params [this] {:multipart-params (seq this)}))
 
 (def multipart-params map->MultipartParams)
 
@@ -74,8 +71,7 @@
 ;; a specific order.
 (deftype OrderedMultipartParams [xs]
   InfersRequestOptions
-  (-params-key [_] :multipart-params)
-  (-params [_] xs))
+  (-params [_] {:multipart-params xs}))
 
 (defn ordered-multipart-params [xs]
   {:pre [(seqable? xs)]}
@@ -85,13 +81,11 @@
   (let [params (:params opts)
         base-opts (-opts params)
         opts* (merge base-opts opts)
-        k (-params-key params)
-        v (or (get opts* k) (-params params))]
+        params* (-params params)]
     (-> opts*
         (dissoc :params)
-        (assoc
-          k v
-          :url url)
+        (merge params*)
+        (assoc :url url)
         (dissoc nil))))
 
 (defn put-error! [opts error]
