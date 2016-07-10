@@ -15,21 +15,33 @@
 
 ;; HTTP
 
-(def collection-formats
-  {:json {:accept "application/json"}})
+(def format-request-defaults
+  {:edn      {:accept "application/edn"}
+   :json     {:accept "application/json"}
+   :transit  {:accept "application/transit+json"}})
 
-(def collection-format->params-key
-  {:json :json-params})
+(def format->params-key
+  {:edn      :edn-params
+   :json     :json-params
+   :transit  :transit-params})
 
 (def config
   (atom
-    {:collection-format :json
-     :request-defaults {:accept "application/json"}}))
+    {:format nil
+     :request-defaults nil}))
+
+(defn set-config-format! [format]
+  (let [request-defaults (format-request-defaults format)]
+    (swap! config
+      (fn [config]
+        (-> config
+            (assoc :format format)
+            (update :request-defaults merge request-defaults))))))
 
 (defn request-defaults [x]
-  (let [{:keys [collection-format request-defaults]} @config]
+  (let [{:keys [format request-defaults]} @config]
     (if (coll? x)
-        (merge request-defaults (get collection-formats collection-format))
+        (merge request-defaults (format-request-defaults format))
         request-defaults)))
 
 (defprotocol InfersRequestOptions
@@ -57,7 +69,7 @@
     ;; The conversion to JSON or similar serializations depends on `clj->js`,
     ;; which for our purposes is restricted to types satisfying ICollection.
     (let [k (if (coll? x)
-                (collection-format->params-key (:collection-format @config) :params)
+                (format->params-key (:format @config) :params)
                 :params)]
       {k x})))
 

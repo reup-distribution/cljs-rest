@@ -9,7 +9,8 @@
 (def default-config @rest/config)
 
 (use-fixtures :each
-  {:after (fn [] (reset! rest/config default-config))})
+  {:before (fn [] (rest/set-config-format! :json))
+   :after (fn [] (reset! rest/config default-config))})
 
 (defn configure-error-chan! []
   (let [error-chan (timeout 1000)]
@@ -247,12 +248,14 @@
         (done)))))
 
 (deftest multipart-data
-  (let [multipart (rest/MultipartParams {:a "b"})
-        ordered (rest/OrderedMultipartParams [[:a "b"]])
+  (let [params {:a "b"}
+        multipart (rest/multipart-params params)
+        ordered-params [[:a "b"]]
+        ordered (rest/ordered-multipart-params ordered-params)
         actual-multipart (rest/request-options :anything {:params multipart})
         actual-ordered (rest/request-options :anything {:params ordered})]
-    (is (= (seq multipart) (:multipart-params actual-multipart)))
-    (is (= ordered (:multipart-params actual-ordered)))
+    (is (= (seq params) (:multipart-params actual-multipart)))
+    (is (= ordered-params (:multipart-params actual-ordered)))
     (is (false? (contains? actual-multipart :params)))
     (is (false? (contains? actual-ordered :params)))))
 
