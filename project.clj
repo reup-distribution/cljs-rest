@@ -1,4 +1,4 @@
-(defproject cljs-rest "0.2.0"
+(defproject cljs-rest "1.0.0"
   :license {:name "BSD 2-clause \"Simplified\" License"
             :url "http://opensource.org/licenses/BSD-2-Clause"
             :year 2016
@@ -6,7 +6,7 @@
   :description "A ClojureScript REST client"
   :url "https://github.com/reup-distribution/cljs-rest"
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [org.clojure/clojurescript "1.9.36" :scope "provided"]
+                 [org.clojure/clojurescript "1.9.89" :scope "provided"]
                  [cljs-http "0.1.41"]]
   :aliases {"test" ["run" "-m" "cljs-rest.test"]
             "cljsbuild" ["with-profile" "dev" "cljsbuild"]}
