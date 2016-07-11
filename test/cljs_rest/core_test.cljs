@@ -48,7 +48,7 @@
 ;       (let [json-config @rest/config
 ;             _ (reset! rest/config default-config)
 ;             resources (<! (binding [rest/*config* json-config]
-;                             (rest/read listing)))]
+;                             (rest/get listing)))]
 ;         (is (:success resources))
 ;         (is (= "application/json" (re-find #"application/json" (get-in resources [:headers :content-type]))))
 ;         (done)))))
@@ -74,7 +74,7 @@
   (async done
     (go
       (let [payload (first payloads)
-            resource (<! (rest/create! listing payload))
+            resource (<! (rest/post! listing payload))
             resource-url (item-url 1)
             expected (assoc payload :url resource-url)]
         (is (= expected (:data resource)))
@@ -84,7 +84,7 @@
 (deftest listing-read
   (async done
     (go
-      (let [resources (<! (rest/read listing))
+      (let [resources (<! (rest/get listing))
             first-resource (first (:resources resources))
             expected (assoc (first payloads) :url (item-url 1))]
         (is (= expected (:data first-resource)))
@@ -94,7 +94,7 @@
 (deftest listing-read-params
   (async done
     (go
-      (let [resources (<! (rest/read listing {:empty "results"}))]
+      (let [resources (<! (rest/get listing {:empty "results"}))]
         (is (= (list) (:resources resources)))
         (done)))))
 
@@ -102,7 +102,7 @@
   (async done
     (go
       (let [listing (rest/resource-listing "http://localhost:4000/does-not-exist/")
-            resources (<! (rest/read listing))]
+            resources (<! (rest/get listing))]
         (is (= false (:success resources)))
         (is (= 404 (:status resources)))
         (done)))))
@@ -112,7 +112,7 @@
     (go
       (let [error-chan (configure-error-chan!)
             listing (rest/resource-listing "http://localhost:4000/does-not-exist/")
-            resources (<! (rest/read listing))
+            resources (<! (rest/get listing))
             error (<! error-chan)]
         (is (= false (:success error)))
         (is (= 404 (:status error)))
@@ -149,7 +149,7 @@
     (go
       (let [listing* (assoc listing :constructor constructor)
             payload (second payloads)
-            resource (<! (rest/create! listing* payload))
+            resource (<! (rest/post! listing* payload))
             expected {:url (string/upper-case (item-url 2))
                       :a "B"}]
         (is (= expected (:data resource))))
@@ -159,7 +159,7 @@
   (async done
     (go
       (let [listing* (assoc listing :constructor constructor)
-            resources (<! (rest/read listing*))
+            resources (<! (rest/get listing*))
             urls [(item-url 1) (item-url 2)]
             expected (map-indexed
                        (fn [i payload]
@@ -174,8 +174,8 @@
   (async done
     (go
       (let [listing* (assoc listing :constructor constructor)
-            resources (<! (rest/read listing*))
-            second-read (<! (rest/read resources))
+            resources (<! (rest/get listing*))
+            second-read (<! (rest/get resources))
             urls [(item-url 1) (item-url 2)]
             expected (map-indexed
                        (fn [i payload]
@@ -191,7 +191,7 @@
     (go
       (let [url (item-url 1)
             resource (rest/resource url)
-            instance (<! (rest/read resource))
+            instance (<! (rest/get resource))
             expected (assoc (first payloads) :url url)]
         (is (= expected (:data instance)))
         (done)))))
@@ -201,7 +201,7 @@
     (go
       (let [url (item-url 2)
             resource (rest/resource url :constructor constructor)
-            instance (<! (rest/read resource))
+            instance (<! (rest/get resource))
             expected {:url (string/upper-case url)
                       :a "B"}]
         (is (= expected (:data instance)))
@@ -212,7 +212,7 @@
     (go
       (let [url (item-url 3)
             resource (rest/resource url)
-            instance (<! (rest/read resource))]
+            instance (<! (rest/get resource))]
         (is (= false (:success instance)))
         (is (= 404 (:status instance)))
         (done)))))
@@ -222,7 +222,7 @@
     (go
       (let [url (item-url 3)
             resource (rest/resource url)
-            instance (<! (rest/read resource))]
+            instance (<! (rest/get resource))]
         (is (= url (:url instance)))
         (done)))))
 
@@ -232,7 +232,7 @@
       (let [url (item-url 1)
             resource (rest/resource url)
             payload {:c "d"}
-            updated (<! (rest/update! resource payload))
+            updated (<! (rest/put! resource payload))
             expected (assoc payload :url url)]
         (is (= expected (:data updated)))
         (done)))))
@@ -244,7 +244,7 @@
 ;     (go
 ;       (let [url (item-url 1)
 ;             resource (rest/resource url)
-;             existing (<! (rest/read resource))
+;             existing (<! (rest/get resource))
 ;             payload {:a "c"}
 ;             patched (<! (rest/patch! resource payload))
 ;             expected (merge (:data existing) payload {:url url})]
@@ -257,7 +257,7 @@
       (let [url (item-url 1)
             resource (rest/resource url)
             deletion (<! (rest/delete! resource))
-            lookup (<! (rest/read resource))]
+            lookup (<! (rest/get resource))]
         (is (= true (:success deletion)))
         (is (= false (:success lookup)))
         (is (= 410 (:status lookup)))
@@ -281,7 +281,7 @@
       (let [error-chan (timeout 1000)
             listing (rest/resource-listing "http://localhost:4000/does-not-exist/"
                       :opts {:error-chan error-chan})
-            resources (<! (rest/read listing))
+            resources (<! (rest/get listing))
             error (<! error-chan)]
         (is (= 404 (:status error)))
         (done)))))
@@ -294,10 +294,10 @@
       (let [payload {}
             data (<! (async->
                        listing
-                       rest/read
+                       rest/get
                        :resources
                        last
-                       (rest/update! payload)
+                       (rest/put! payload)
                        :data))
             expected {:url (item-url 2)}]
         (is (= expected data))

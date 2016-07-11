@@ -22,13 +22,13 @@ A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
   (<! (rest/options entries))
   ;; #cljs-rest.core.ResourceOptions{:success true :data {...}}
 
-  (<! (rest/read entries))
+  (<! (rest/get entries))
   ;; #cljs-rest.core.ResourceListing{:success true :resources [] ,,,}
 
-  (<! (rest/read entry-1))
+  (<! (rest/get entry-1))
   ;; #cljs-rest.core.Resource{:success false :status 404 ,,,}
 
-  (<! (rest/create entries {:title "Foo" :body "Lorem"}))
+  (<! (rest/post! entries {:title "Foo" :body "Lorem"}))
   ;; #cljs-rest.core.Resource{:success true :data {:url "https://api.whatever.org/entries/1/" :title "Foo"} ...}
 
   (<! (rest/first-resource entries))
@@ -38,7 +38,7 @@ A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
   (<! (rest/head entries))
   (<! (rest/head entry-1))
-  (<! (rest/update! entry-1 {:title "Bar" :body "Ipsum"}))
+  (<! (rest/put! entry-1 {:title "Bar" :body "Ipsum"}))
   (<! (rest/patch! entry-1 {:body "Consectetur"}))
   (<! (rest/delete! entry-1)))
 ```
@@ -75,10 +75,10 @@ Example usage:
 ```clojure
 (async->
   some-listing
-  rest/read
+  rest/get
   :resources
   first
-  (rest/update! {:foo "bar"}))
+  (rest/put! {:foo "bar"}))
 ```
 
 If any step in the async sequence returns an instance of `Error`, that will be the final value and subsequent steps will not  be called. Example:
@@ -91,7 +91,7 @@ If any step in the async sequence returns an instance of `Error`, that will be t
 
 (async->
   some-listing
-  rest/read
+  rest/get
   response-error
   ;; If the request fails, the `ExceptionInfo` returned will be the final value,
   ;; and none of the following calls will be made:

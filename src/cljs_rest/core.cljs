@@ -1,8 +1,8 @@
 (ns cljs-rest.core
-  (:refer-clojure :exclude [read])
+  (:refer-clojure :exclude [get])
   (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [clojure.string :as string]
-            [cljs.core.async :refer [<! chan put!]]
+            [cljs.core.async :as async]
             [cljs.core.async.impl.protocols :refer [ReadPort]]
             [cljs-http.client :as http]))
 
@@ -102,7 +102,7 @@
 
 (defn put-error! [opts error]
   (when-let [error-chan (or (:error-chan opts) (:error-chan @config))]
-    (put! error-chan error)))
+    (async/put! error-chan error)))
 
 (defn with-keywords [m]
   (reduce
@@ -116,7 +116,7 @@
   ([url opts]
     (go
       (let [opts* (request-options url opts)
-            response (<! (http/request opts*))]
+            response (async/<! (http/request opts*))]
         (when-not (:success response)
           (put-error! opts response))
         (update response :headers with-keywords)))))
@@ -129,15 +129,15 @@
 (defprotocol Restful
   (head [_])
   (options [_])
-  (create! [_ data])
-  (read [_] [_ params])
-  (update! [_ data])
+  (get [_] [_ params])
+  (post! [_ data])
+  (put! [_ data])
   (patch! [_ data])
   (delete! [_]))
 
 (defn request-restful [constructor url opts]
   (go
-    (let [response (<! (request url opts))]
+    (let [response (async/<! (request url opts))]
       (-init (constructor (assoc response :url url :opts opts))))))
 
 (defn- construct-record
@@ -203,14 +203,14 @@
   (options [this]
     (options (resource-options url :opts opts)))
 
-  (read [this]
-    (read this {}))
+  (get [this]
+    (get this {}))
 
-  (read [this params]
+  (get [this params]
     (let [opts* (assoc opts :query-params params)]
       (request-resource this opts*)))
 
-  (update! [this data]
+  (put! [this data]
     (let [opts* (assoc opts :method :put :params data)]
       (request-resource this opts*)))
 
@@ -252,7 +252,7 @@
 
   (first-resource [this params]
     (go
-      (let [result (<! (read this params))
+      (let [result (async/<! (get this params))
             {:keys [success resources]} result
             no-items? (empty? resources)]
         (cond
@@ -279,14 +279,14 @@
   (options [this]
     (options (resource-options url :opts opts)))
 
-  (create! [this data]
+  (post! [this data]
     (let [opts* (assoc opts :method :post :params data)]
       (request-resource this opts*)))
 
-  (read [this]
-    (read this {}))
+  (get [this]
+    (get this {}))
 
-  (read [this params]
+  (get [this params]
     (let [opts* (assoc opts :query-params params)]
       (request-resources this opts*))))
 

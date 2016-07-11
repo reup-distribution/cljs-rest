@@ -17,14 +17,24 @@ It turns out `binding` [does not behave as expected](http://dev.clojure.org/jira
 
 ### Request options
 
-The underlying request library was changed to [cljs-http](https://github.com/r0man/cljs-http) from [cljs-ajax](https://github.com/JulianBirch/cljs-ajax).
+Because the underlying request library was changed to [cljs-http](https://github.com/r0man/cljs-http) from [cljs-ajax](https://github.com/JulianBirch/cljs-ajax), request options were changed accordingly.
+
+### Request methods
+
+Methods were renamed to match their respective HTTP verbs.
+
+0.1.5                                    | 1.0.0
+-----                                    | -----
+`rest/read`                              | `rest/get`
+`rest/create!`                           | `rest/post!`
+`rest/update!`                           | `rest/put!`
 
 
 ### Multipart
 
 0.1.5                                    | 1.0.0
 -----                                    | -----
-`(rest/post listing (FormData. ...))`    | `(rest/post listing (rest/multipart-params {:field val}))`
+`(rest/patch! listing (FormData. ...))`    | `(rest/patch! listing (rest/multipart-params {:field val}))`
 
 ### Error handling
 
