@@ -30,13 +30,13 @@
     {:format nil
      :request-defaults nil}))
 
-(defn set-config-format! [format]
-  (let [request-defaults (format-request-defaults format)]
-    (swap! config
-      (fn [config]
-        (-> config
-            (assoc :format format)
-            (update :request-defaults merge request-defaults))))))
+(defn configure-format [config format]
+  (-> config
+      (assoc :format format)
+      (update :request-defaults merge (format-request-defaults format))))
+
+(defn configure-format! [format]
+  (swap! config #(configure-format % format)))
 
 (defn request-defaults [x]
   (let [{:keys [format request-defaults]} @config]
@@ -104,11 +104,11 @@
   (when-let [error-chan (or (:error-chan opts) (:error-chan @config))]
     (put! error-chan error)))
 
-(defn keys->keyword [m]
+(defn with-keywords [m]
   (reduce
     (fn [acc [k v]]
       (assoc acc (keyword k) v))
-    {}
+    m
     m))
 
 (defn request
@@ -119,14 +119,12 @@
             response (<! (http/request opts*))]
         (when-not (:success response)
           (put-error! opts response))
-        (update response :headers keys->keyword)))))
-
-(defn request->record [constructor url opts]
-  (go
-    (let [response (<! (request url opts))]
-      (constructor (assoc response :url url :opts opts)))))
+        (update response :headers with-keywords)))))
 
 ;; REST semantics
+
+(defprotocol Initializable
+  (-init [_]))
 
 (defprotocol Restful
   (head [_])
@@ -137,19 +135,27 @@
   (patch! [_ data])
   (delete! [_]))
 
+(defn request-restful [constructor url opts]
+  (go
+    (let [response (<! (request url opts))]
+      (-init (constructor (assoc response :url url :opts opts))))))
+
 (defn- construct-record
   "Convenience constructor for resource record types defined by cljs-rest"
   [constructor url & {opts :opts :or {opts {}} :as kwargs}]
-  (constructor (assoc kwargs :opts opts :url url)))
+  (-init (constructor (assoc kwargs :opts opts :url url))))
 
 ;; HEAD resource representation
 
 (declare map->ResourceHead)
 
-(defrecord ResourceHead [url opts status success headers body]
+(defrecord ResourceHead [url opts status success headers data]
+  Initializable
+  (-init [this] (assoc this :data headers))
+
   Restful
   (head [_]
-    (request->record map->ResourceHead url (assoc opts :method :head))))
+    (request-restful map->ResourceHead url (assoc opts :method :head))))
 
 (def resource-head
   (partial construct-record map->ResourceHead))
@@ -158,10 +164,13 @@
 
 (declare map->ResourceOptions)
 
-(defrecord ResourceOptions [url opts status success headers body]
+(defrecord ResourceOptions [url opts status success headers body data]
+  Initializable
+  (-init [this] (assoc this :data body))
+
   Restful
   (options [_]
-    (request->record map->ResourceOptions url (assoc opts :method :options))))
+    (request-restful map->ResourceOptions url (assoc opts :method :options))))
 
 (def resource-options
   (partial construct-record map->ResourceOptions))
@@ -170,25 +179,23 @@
 
 (declare map->Resource)
 
-(defn- construct-resource [resource]
-  (if (:success resource)
-      (let [constructor (or (:constructor resource) identity)
-            data (constructor (:body resource))]
-        (assoc resource
-          :url (:url data)
-          :data data))
-      (assoc resource :data nil)))
-
-(defn- construct-resource-response [resource response]
-  (construct-resource
-    (map->Resource (merge resource response))))
-
 (defn- request-resource [resource opts]
-  (let [constructor (partial construct-resource-response resource)
+  (let [constructor #(map->Resource (merge resource %))
         url (:url resource)]
-    (request->record constructor url opts)))
+    (request-restful constructor url opts)))
 
 (defrecord Resource [url opts constructor status success headers body data]
+  Initializable
+  (-init [this]
+    (let [{:keys [url success constructor body]} this]
+      (if success
+          (let [constructor* (or constructor identity)
+                data (constructor* body)]
+            (assoc this
+              :url (or (:url data) url)
+              :data data))
+          (assoc this :data nil))))
+
   Restful
   (head [_]
     (head (resource-head url :opts opts)))
@@ -226,26 +233,20 @@
 
 (declare map->ResourceListing)
 
-(defn- construct-listing [resource-listing]
-  (if (:success resource-listing)
-      (let [{:keys [opts item-opts constructor]} resource-listing
-            constructor* (or constructor identity)
-            opts* (or item-opts opts)
-            base-resource (map->Resource {:success true :opts opts* :constructor constructor*})
-            resources (map #(assoc base-resource :body %) (:body resource-listing))]
-        (assoc resource-listing :resources (map construct-resource resources)))
-      (assoc resource-listing :resources nil)))
-
-(defn- construct-listing-resources [resource-listing response]
-  (construct-listing
-    (map->ResourceListing (merge resource-listing response))))
-
 (defn- request-resources [resource-listing opts]
-  (let [url (:url resource-listing)
-        constructor (partial construct-listing-resources resource-listing)]
-    (request->record constructor url opts)))
+  (let [constructor #(map->ResourceListing (merge resource-listing %))
+        url (:url resource-listing)]
+    (request-restful constructor url opts)))
 
 (defrecord ResourceListing [url opts item-opts constructor status success headers body resources]
+  Initializable
+  (-init [this]
+    (if success
+        (let [opts* (or item-opts opts)
+              resource* #(resource nil :success true :opts opts* :constructor constructor :body %)]
+          (assoc this :resources (map resource* body)))
+        (assoc this :resources nil)))
+
   RestfulListing
   (first-resource [this] (first-resource this nil))
 

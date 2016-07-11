@@ -6,10 +6,10 @@
             [cljs.core.async :refer [<! timeout]]
             [cljs-rest.core :as rest]))
 
-(def default-config @rest/config)
+(defonce default-config @rest/config)
 
 (use-fixtures :each
-  {:before (fn [] (rest/set-config-format! :json))
+  {:before (fn [] (rest/configure-format! :json))
    :after (fn [] (reset! rest/config default-config))})
 
 (defn configure-error-chan! []
@@ -37,6 +37,21 @@
       (assoc acc k (if (string? v) (string/upper-case v) v)))
     (map->Foo {})
     data))
+
+;; It turns out you can't reliably do dynamic binding with async:
+;; http://dev.clojure.org/jira/browse/CLJS-1634
+;; Related: http://dev.clojure.org/jira/browse/CLJS-1705
+;; But this is what that test would have looked like.
+; (deftest dynamic-config-binding
+;   (async done
+;     (go
+;       (let [json-config @rest/config
+;             _ (reset! rest/config default-config)
+;             resources (<! (binding [rest/*config* json-config]
+;                             (rest/read listing)))]
+;         (is (:success resources))
+;         (is (= "application/json" (re-find #"application/json" (get-in resources [:headers :content-type]))))
+;         (done)))))
 
 (deftest listing-head
   (async done
@@ -125,6 +140,7 @@
       (let [error-chan (configure-error-chan!)
             resources (<! (rest/first-resource listing {:empty "results"}))
             error (<! error-chan)]
+        (is (= false (:success error)))
         (is (= 404 (:status error)))
         (done)))))
 
