@@ -104,7 +104,14 @@
   (when-let [error-chan (or (:error-chan opts) (:error-chan @config))]
     (async/put! error-chan error)))
 
-(defn with-keywords [m]
+(defn with-keywords
+  "Given a map `m`, returns a map preserving the original keys and appending
+  keywords for each non-keyword field. Example:
+
+  (with-keywords {\"a\" \"b\"})
+  ;;=> {\"a\" \"b\"
+  ;;    :a \"b\"}"
+  [m]
   (reduce
     (fn [acc [k v]]
       (assoc acc (keyword k) v))
