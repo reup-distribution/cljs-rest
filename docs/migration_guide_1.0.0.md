@@ -34,7 +34,7 @@ Methods were renamed to match their respective HTTP verbs.
 
 0.1.5                                    | 1.0.0
 -----                                    | -----
-`(rest/patch! listing (FormData. ...))`    | `(rest/patch! listing (rest/multipart-params {:field val}))`
+`(rest/patch! listing (FormData. ...))`  | `(rest/patch! listing (rest/multipart-params {:field val}))`
 
 ### Error handling
 
