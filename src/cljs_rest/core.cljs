@@ -1,10 +1,10 @@
 (ns cljs-rest.core
-  (:refer-clojure :exclude [read])
+  (:refer-clojure :exclude [get])
   (:require-macros [cljs.core.async.macros :refer [go]])
   (:require [clojure.string :as string]
-            [cljs.core.async :refer [chan close! put! <!]]
+            [cljs.core.async :as async]
             [cljs.core.async.impl.protocols :refer [ReadPort]]
-            [ajax.core :as ajax]))
+            [cljs-http.client :as http]))
 
 ;; Async helpers
 
@@ -13,110 +13,195 @@
       x
       (go x)))
 
-;; Serialization
-
-(defn pr-strs [& args]
-  (->> args
-       (map pr-str)
-       (string/join ",")))
-
 ;; HTTP
 
-(def ^:dynamic *opts*
-  {:method :get
-   :format (ajax/json-request-format)
-   :response-format (ajax/json-response-format {:keywords? true})})
+(def format-request-defaults
+  {:edn      {:accept "application/edn"}
+   :json     {:accept "application/json"}
+   :transit  {:accept "application/transit+json"}})
 
-(def multipart-format
-  {:content-type "multipart/form-data"
-   :write identity})
+(def format->params-key
+  {:edn      :edn-params
+   :json     :json-params
+   :transit  :transit-params})
+
+(def config
+  (atom
+    {:format nil
+     :request-defaults nil}))
+
+(defn configure-format [config format]
+  (-> config
+      (assoc :format format)
+      (update :request-defaults merge (format-request-defaults format))))
+
+(defn configure-format! [format]
+  (swap! config #(configure-format % format)))
+
+(defn request-defaults [x]
+  (let [{:keys [format request-defaults]} @config]
+    (if (coll? x)
+        (merge request-defaults (format-request-defaults format))
+        request-defaults)))
+
+(defprotocol InfersRequestOptions
+  "Provides extension semantics for generating request options for arbitrary
+  types passed as body params. Example:
+
+  (extend-protocol InfersRequestOptions
+    MyTransitType
+    (-opts [_] {:accept \"application/transit+json\"})
+    (-params [this] {:transit-params this}))"
+
+  (-opts [_] "Returns arbitrary request options for params type")
+  (-params [_] "Returns a map of cljs-http params for request options"))
+
+(extend-protocol InfersRequestOptions
+  js/FormData
+  (-params [form-data] {:body form-data})
+
+  nil
+  (-params [_] nil)
+
+  default
+  (-opts [x] (request-defaults x))
+  (-params [x]
+    ;; The conversion to JSON or similar serializations depends on `clj->js`,
+    ;; which for our purposes is restricted to types satisfying ICollection.
+    (let [k (if (coll? x)
+                (format->params-key (:format @config) :params)
+                :params)]
+      {k x})))
+
+(defrecord MultipartParams []
+  InfersRequestOptions
+  (-params [this] {:multipart-params (seq this)}))
+
+(def multipart-params map->MultipartParams)
+
+;; Seen in cljs-http issues, some APIs require multipart payloads to be sent in
+;; a specific order.
+(deftype OrderedMultipartParams [xs]
+  InfersRequestOptions
+  (-params [_] {:multipart-params xs}))
+
+(defn ordered-multipart-params [xs]
+  {:pre [(seqable? xs)]}
+  (->OrderedMultipartParams xs))
 
 (defn request-options [url opts]
   (let [params (:params opts)
-        form-data? (instance? js/FormData params)
-        form-opts (when form-data?
-                    (-> opts
-                        (assoc :format multipart-format :body params)
-                        (dissoc :params)))]
-    (merge *opts* (or form-opts opts) {:uri url})))
+        base-opts (-opts params)
+        opts* (merge base-opts opts)
+        params* (-params params)]
+    (-> opts*
+        (dissoc :params)
+        (merge params*)
+        (assoc :url url)
+        (dissoc nil))))
 
-(defn request [url opts]
-  (let [chan (chan)
-        opts* (request-options url opts)
-        {:keys [error-handler process]
-         :or {error-handler identity process identity}} opts*]
-    (ajax/ajax-request
-      (assoc opts*
-        :handler (fn [[ok? data :as x]]
-                   (when-not ok?
-                     (error-handler data))
-                   (let [processed (process x)]
-                     (put! chan processed)
-                     (close! chan)))))
-    chan))
+(defn put-error! [opts error]
+  (when-let [error-chan (or (:error-chan opts) (:error-chan @config))]
+    (async/put! error-chan error)))
+
+(defn with-keywords
+  "Given a map `m`, returns a map preserving the original keys and appending
+  keywords for each non-keyword field. Example:
+
+  (with-keywords {\"a\" \"b\"})
+  ;;=> {\"a\" \"b\"
+  ;;    :a \"b\"}"
+  [m]
+  (reduce
+    (fn [acc [k v]]
+      (assoc acc (keyword k) v))
+    m
+    m))
+
+(defn request
+  ([url] (request url {}))
+  ([url opts]
+    (go
+      (let [opts* (request-options url opts)
+            response (async/<! (http/request opts*))]
+        (when-not (:success response)
+          (put-error! opts response))
+        (update response :headers with-keywords)))))
 
 ;; REST semantics
+
+(defprotocol Initializable
+  (-init [_]))
 
 (defprotocol Restful
   (head [_])
   (options [_])
-  (create! [_ data])
-  (read [_] [_ params])
-  (update! [_ data])
+  (get [_] [_ params])
+  (post! [_ data])
+  (put! [_ data])
   (patch! [_ data])
   (delete! [_]))
 
+(defn request-restful [constructor url opts]
+  (go
+    (let [response (async/<! (request url opts))]
+      (-init (constructor (assoc response :url url :opts opts))))))
+
+(defn- construct-record
+  "Convenience constructor for resource record types defined by cljs-rest"
+  [constructor url & {opts :opts :or {opts {}} :as kwargs}]
+  (-init (constructor (assoc kwargs :opts opts :url url))))
+
 ;; HEAD resource representation
-(defrecord ResourceHead [url opts ok? data]
+
+(declare map->ResourceHead)
+
+(defrecord ResourceHead [url opts status success headers data]
+  Initializable
+  (-init [this] (assoc this :data headers))
+
   Restful
   (head [_]
-    (request url
-      (assoc opts
-        :method :head
-        :process (fn [[ok? data]]
-                   (ResourceHead. url opts ok? data))
-        :response-format {:read (fn [xhr]
-                                  (reduce
-                                    (fn [acc [k v]]
-                                      (let [kw (keyword (string/lower-case k))]
-                                        (assoc acc kw v)))
-                                    {}
-                                    (js->clj (.getResponseHeaders xhr))))
-                          :description "raw"
-                          :content-type "*"
-                          :type :document}))))
+    (request-restful map->ResourceHead url (assoc opts :method :head))))
 
-(defn resource-head [url & {:keys [opts ok? data] :or {opts {}}}]
-  (ResourceHead. url opts ok? data))
+(def resource-head
+  (partial construct-record map->ResourceHead))
 
 ;; OPTIONS resource representation
 
-(defrecord ResourceOptions [url opts ok? data]
+(declare map->ResourceOptions)
+
+(defrecord ResourceOptions [url opts status success headers body data]
+  Initializable
+  (-init [this] (assoc this :data body))
+
   Restful
   (options [_]
-    (request url
-      (assoc opts
-        :method :options
-        :process (fn [[ok? data]]
-                   (ResourceOptions. url opts ok? data))))))
+    (request-restful map->ResourceOptions url (assoc opts :method :options))))
 
-(defn resource-options [url & {:keys [opts ok? data] :or {opts {}}}]
-  (ResourceOptions. url opts ok? data))
+(def resource-options
+  (partial construct-record map->ResourceOptions))
 
 ;; Instance
 
-(defprotocol RestfulInstance
-  (instance-constructor [_]))
+(declare map->Resource)
 
-(defrecord Resource [url opts constructor ok? data]
-  RestfulInstance
-  (instance-constructor [_]
-    (fn [[ok? item]]
-      (if ok?
-          (let [constructed (constructor item)
-                url (:url constructed)]
-            (Resource. url opts constructor ok? constructed))
-          (Resource. url opts constructor ok? item))))
+(defn- request-resource [resource opts]
+  (let [constructor #(map->Resource (merge resource %))
+        url (:url resource)]
+    (request-restful constructor url opts)))
+
+(defrecord Resource [url opts constructor status success headers body data]
+  Initializable
+  (-init [this]
+    (let [{:keys [url success constructor body]} this]
+      (if success
+          (let [constructor* (or constructor identity)
+                data (constructor* body)]
+            (assoc this
+              :url (or (:url data) url)
+              :data data))
+          (assoc this :data nil))))
 
   Restful
   (head [_]
@@ -125,85 +210,74 @@
   (options [this]
     (options (resource-options url :opts opts)))
 
-  (read [this]
-    (read this nil))
+  (get [this]
+    (get this {}))
 
-  (read [this params]
-    (request url
-      (assoc opts
-        :params params
-        :process (instance-constructor this))))
+  (get [this params]
+    (let [opts* (assoc opts :query-params params)]
+      (request-resource this opts*)))
 
-  (update! [this changes]
-    (request url
-      (assoc opts
-        :method :put
-        :params changes
-        :process (instance-constructor this))))
+  (put! [this data]
+    (let [opts* (assoc opts :method :put :params data)]
+      (request-resource this opts*)))
 
-  (patch! [this changes]
-    (request url
-      (assoc opts
-        :method :patch
-        :params changes
-        :process (instance-constructor this))))
+  (patch! [this data]
+    (let [opts* (assoc opts :method :patch :params data)]
+      (request-resource this opts*)))
 
   (delete! [_]
     (request url
       (assoc opts
         :method :delete))))
 
-(defn resource [url & {:keys [opts constructor ok? data] :or {opts {} constructor identity}}]
-  (Resource. url opts constructor ok? data))
+(def resource
+  (partial construct-record map->Resource))
 
 ;; Listing
 
 (defprotocol RestfulListing
-  (first-item [_] [_ params])
-  (item-constructor [_])
-  (items-constructor [_]))
+  (first-resource [_] [_ params]))
 
-(defrecord ResourceListing [url opts item-opts constructor ok? data]
+(declare map->ResourceListing)
+
+(defn- request-resources [resource-listing opts]
+  (let [constructor #(map->ResourceListing (merge resource-listing %))
+        url (:url resource-listing)]
+    (request-restful constructor url opts)))
+
+(defrecord ResourceListing [url opts item-opts constructor status success headers body resources]
+  Initializable
+  (-init [this]
+    (if success
+        (let [opts* (or item-opts opts)
+              resource* #(resource nil :success true :opts opts* :constructor constructor :body %)]
+          (assoc this :resources (map resource* body)))
+        (assoc this :resources nil)))
+
   RestfulListing
-  (first-item [this] (first-item this nil))
+  (first-resource [this] (first-resource this nil))
 
-  (first-item [this params]
+  (first-resource [this params]
     (go
-      (let [resources (<! (read this params))
-            {:keys [ok? data]} resources
-            no-items? (empty? data)
-            no-items-data (when no-items? {:status 404})
-            opts* (request-options url opts)
-            error-handler (:error-handler opts* (fn [_]))]
+      (let [result (async/<! (get this params))
+            {:keys [success resources]} result
+            no-items? (empty? resources)]
         (cond
-          (not ok?)
+          (not success)
           resources
 
           no-items?
-          (do
-            (error-handler no-items-data)
-            (resource url
-              :opts opts
-              :constructor constructor
-              :ok? false
-              :data no-items-data))
+          (let [resource (resource url
+                           :opts opts
+                           :constructor constructor
+                           :success false
+                           :status 404
+                           :data nil)]
+            (put-error! opts resource)
+            resource)
 
           :else
-          (first data)))))
-
-  (item-constructor [_]
-    (fn [[ok? item]]
-      (let [constructed (constructor item)
-            url (:url constructed)]
-        (Resource. url (or item-opts opts) constructor ok? constructed))))
-
-  (items-constructor [this]
-    (fn [[ok? data]]
-      (if ok?
-          (let [constructor* (item-constructor this)
-                constructed (map #(constructor* [ok? %]) data)]
-            (ResourceListing. url opts item-opts constructor ok? constructed))
-          (ResourceListing. url opts item-opts constructor ok? data))))
+          (first resources)))))
 
   Restful
   (head [_]
@@ -212,22 +286,16 @@
   (options [this]
     (options (resource-options url :opts opts)))
 
-  (create! [this data]
-    (request url
-      (assoc (or item-opts opts)
-        :method :post
-        :params data
-        :process (item-constructor this))))
+  (post! [this data]
+    (let [opts* (assoc opts :method :post :params data)]
+      (request-resource this opts*)))
 
-  (read [this]
-    (read this nil))
+  (get [this]
+    (get this {}))
 
-  (read [this params]
-    (request url
-      (assoc opts
-        :params params
-        :process (items-constructor this)))))
+  (get [this params]
+    (let [opts* (assoc opts :query-params params)]
+      (request-resources this opts*))))
 
-(defn resource-listing
-  [url & {:keys [opts item-opts constructor ok? data] :or {opts {} constructor identity}}]
-  (ResourceListing. url opts item-opts constructor ok? data))
+(def resource-listing
+  (partial construct-record map->ResourceListing))

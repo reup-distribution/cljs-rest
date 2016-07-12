@@ -1,6 +1,6 @@
 # cljs-rest: A ClojureScript REST client
 
-`[cljs-rest "0.1.5"]`
+`[cljs-rest "1.0.0"]`
 
 A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
@@ -20,32 +20,32 @@ A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
 (go
   (<! (rest/options entries))
-  ;; #cljs-rest.core.ResourceOptions{:ok? true :data {...}}
+  ;; #cljs-rest.core.ResourceOptions{:success true :data {...}}
 
-  (<! (rest/read entries))
-  ;; #cljs-rest.core.ResourceListing{:ok? true :data [] ,,,}
+  (<! (rest/get entries))
+  ;; #cljs-rest.core.ResourceListing{:success true :resources [] ,,,}
 
-  (<! (rest/read entry-1))
-  ;; #cljs-rest.core.Resource{:ok? false :data {:status 404 ...} ,,,}
+  (<! (rest/get entry-1))
+  ;; #cljs-rest.core.Resource{:success false :status 404 ,,,}
 
-  (<! (rest/create entries {:title "Foo" :body "Lorem"}))
-  ;; #cljs-rest.core.Resource{:ok? true :data {:url "https://api.whatever.org/entries/1/" :title "Foo"} ...}
+  (<! (rest/post! entries {:title "Foo" :body "Lorem"}))
+  ;; #cljs-rest.core.Resource{:success true :data {:url "https://api.whatever.org/entries/1/" :title "Foo"} ...}
 
-  (<! (rest/first-item entries))
-  ;; #cljs-rest.core.Resource{:ok? true :data {...}}
+  (<! (rest/first-resource entries))
+  ;; #cljs-rest.core.Resource{:success true :data {...}}
 
   ;; And so on...
 
   (<! (rest/head entries))
   (<! (rest/head entry-1))
-  (<! (rest/update entry-1 {:title "Bar" :body "Ipsum"}))
-  (<! (rest/patch entry-1 {:body "Consectetur"}))
-  (<! (rest/delete entry-1)))
+  (<! (rest/put! entry-1 {:title "Bar" :body "Ipsum"}))
+  (<! (rest/patch! entry-1 {:body "Consectetur"}))
+  (<! (rest/delete! entry-1)))
 ```
 
 ### Ajax Options
 
-Options are accepted from an `:opts` keword argument. Refer to [cljs-ajax](https://github.com/JulianBirch/cljs-ajax) for options documentation.
+Options are accepted from an `:opts` keyword argument. Refer to [cljs-http](https://github.com/r0man/cljs-http) for options documentation.
 
 Usage:
 
@@ -75,34 +75,44 @@ Example usage:
 ```clojure
 (async->
   some-listing
-  rest/read
-  :data
+  rest/get
+  :resources
   first
-  (assoc :foo "bar")
-  rest/update!)
+  (rest/put! {:foo "bar"}))
 ```
 
 If any step in the async sequence returns an instance of `Error`, that will be the final value and subsequent steps will not  be called. Example:
 
 ```clojure
 (defn response-error [listing]
-  (if (:ok? listing)
+  (if (:success listing)
       listing
       (ex-info "Request Error" listing)))
 
 (async->
   some-listing
-  rest/read
+  rest/get
   response-error
   ;; If the request fails, the `ExceptionInfo` returned will be the final value,
   ;; and none of the following calls will be made:
-  :data
+  :resources
   first
   whatever)
 ```
 
 ### Releases
 
+- 1.0.0 - Full rewrite, see the [migration guide](docs/migration_guide_1.0.0.md)
+    - Each resource type now populates the following response data:
+        - `success`
+        - `status`
+        - `headers`
+        - `body`
+    - Switched to [cljs-http](https://github.com/r0man/cljs-http), with some conveniences built around it:
+        - `headers` includes both string keys (cljs-http default) as well as keywords
+        - Convenience function to configure default format with `configure-format!`
+    - Response errors are now pushed to a configurable channel, rather than a callback
+    - Request formatting is extensible. EDN, Transit, JSON, FormData and Multipart are provided.
 - 0.1.5 - `ResourceListing` provides a `first-item` convenience method
 - 0.1.4
     - Fixed an issue where requests for `Resource` instances would drop `:url`
