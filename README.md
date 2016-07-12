@@ -45,7 +45,7 @@ A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
 ### Ajax Options
 
-Options are accepted from an `:opts` keword argument. Refer to [cljs-http](https://github.com/r0man/cljs-http) for options documentation.
+Options are accepted from an `:opts` keyword argument. Refer to [cljs-http](https://github.com/r0man/cljs-http) for options documentation.
 
 Usage:
 
