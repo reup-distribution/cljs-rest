@@ -10,7 +10,8 @@
                  [cljs-http "0.1.41"]]
   :aliases {"test" ["cljsbuild" "test"]
             "cljsbuild" ["with-profile" "dev" "cljsbuild"]}
-  :profiles {:dev {:dependencies [[cheshire "5.5.0"]
+  :profiles {:dev {:jvm-opts ^:replace ["-Xmx2048m" "-server"]
+                   :dependencies [[cheshire "5.5.0"]
                                   [compojure "1.5.0"]
                                   [jumblerg/ring.middleware.cors "1.0.1"]
                                   [liberator "0.13"]
