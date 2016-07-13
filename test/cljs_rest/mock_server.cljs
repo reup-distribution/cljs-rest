@@ -84,11 +84,21 @@
 (defmethod request [:options :entries] [_]
   (response {:body {:name "Entries"}}))
 
+(defn pagination-params [req]
+  (let [params (http/parse-query-params (:query-string req))]
+    {:per-page (int (:per-page params 10))
+     :page (int (:page params 1))}))
+
+(defn paginate [params entries]
+  (let [{:keys [per-page page]} params
+        skip (* per-page (dec page))]
+    (->> entries
+         (drop skip)
+         (take per-page))))
+
 (defmethod request [:get :entries] [req]
-  (let [params (http/parse-query-params (:query-string req))
-        results (if (:empty params)
-                    []
-                    @entries)]
+  (let [params (pagination-params req)
+        results (paginate params @entries)]
     (response {:body results})))
 
 (defmethod request [:post :entries] [req]
