@@ -43,6 +43,24 @@ A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
   (<! (rest/delete! entry-1)))
 ```
 
+### Link headers
+
+If your REST server returns `Link` headers for pagination, those headers are automatically parsed:
+
+```clojure
+(go
+  (let [resources (<! (rest/get entries {:per_page 10 :page 3}))
+        link (get-in resources [:headers :link])]
+    link
+    ;; {:prev "https://api.whatever.org/entries/?per_page=10&page=2"
+    ;;  :next "https://api.whatever.org/entries/?per_page=10&page=4"}
+
+    (meta link)
+    ;; {:prev {:per_page "10" :page "2"}
+    ;;  :next {:per_page "10" :page "4"}}
+    ))
+```
+
 ### Ajax Options
 
 Options are accepted from an `:opts` keyword argument. Refer to [cljs-http](https://github.com/r0man/cljs-http) for options documentation.
@@ -102,7 +120,7 @@ If any step in the async sequence returns an instance of `Error`, that will be t
 
 ### Releases
 
-- 1.1.0 - `:link` header is parsed into a map
+- 1.1.0 - `:link` header is parsed
 - 1.0.0 - Full rewrite, see the [migration guide](docs/migration_guide_1.0.0.md)
     - Each resource type now populates the following response data:
         - `success`
