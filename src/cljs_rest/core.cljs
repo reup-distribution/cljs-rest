@@ -120,7 +120,10 @@
     m))
 
 (def link-pattern
-  #"(?i)<(.*?)>; rel=\"(.*?)\"")
+  "Matches a `link-value` according to https://tools.ietf.org/html/rfc5988#section-5,
+  capturing `URI-Reference` and a `rel` value for `link-param`, ignoring all other
+  `link-param` fields if present."
+  #"(?i)<(.*?)>(?:;\s*(?!rel)[^=]+=\".*?\")*;\s*rel=\"(.*?)\"(?:;\s*[^=]+=\".*?\")*")
 
 (defn parse-url-query-params [url]
   (let [uri (uri/parse url)
