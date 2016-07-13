@@ -120,7 +120,7 @@
     m))
 
 (def link-pattern
-  #"<(.*?)>; rel=\"(.*?)\"")
+  #"(?i)<(.*?)>; rel=\"(.*?)\"")
 
 (defn parse-url-query-params [url]
   (let [uri (uri/parse url)
