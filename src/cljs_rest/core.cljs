@@ -4,6 +4,7 @@
   (:require [clojure.string :as string]
             [cljs.core.async :as async]
             [cljs.core.async.impl.protocols :refer [ReadPort]]
+            [goog.Uri :as uri]
             [cljs-http.client :as http]))
 
 ;; Async helpers
@@ -121,6 +122,12 @@
 (def link-pattern
   #"<(.*?)>; rel=\"(.*?)\"")
 
+(defn parse-url-query-params [url]
+  (let [uri (uri/parse url)
+        query-data (.getQueryData uri)]
+    (when-not (.isEmpty query-data)
+      (http/parse-query-params (str query-data)))))
+
 (defn expand-link [link]
   (when link
     (let [matches (re-seq link-pattern link)]
@@ -128,7 +135,10 @@
           link
           (reduce
             (fn [acc [_ url key-str]]
-              (assoc acc (keyword key-str) url))
+              (let [k (keyword key-str)
+                    with-url (assoc acc k url)
+                    query-params (parse-url-query-params url)]
+                (vary-meta with-url assoc k query-params)))
             {}
             matches)))))
 
