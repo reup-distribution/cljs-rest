@@ -136,9 +136,12 @@
           (reduce
             (fn [acc [_ url key-str]]
               (let [k (keyword key-str)
-                    with-url (assoc acc k url)
-                    query-params (parse-url-query-params url)]
-                (vary-meta with-url assoc k query-params)))
+                    params (parse-url-query-params url)
+                    parsed {:url url}
+                    with-params (if (empty? params)
+                                    parsed
+                                    (assoc parsed :params params))]
+                (assoc acc k with-params)))
             {}
             matches)))))
 

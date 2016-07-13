@@ -295,23 +295,13 @@
       (let [payload (first payloads)
             third-resource (<! (rest/post! listing payload))
             resources (<! (rest/get listing {:per-page 1 :page 2}))
-            expected {:prev "/entries/?per-page=1&page=1"
-                      :next "/entries/?per-page=1&page=3"}]
+            expected {:prev {:url "/entries/?per-page=1&page=1"
+                             :params {:per-page "1"
+                                      :page "1"}}
+                      :next {:url "/entries/?per-page=1&page=3"
+                             :params {:per-page "1"
+                                      :page "3"}}}]
         (is (= expected (get-in resources [:headers :link])))
-        (done)))))
-
-(deftest parse-link-header-params
-  (async done
-    (go
-      (let [payload (first payloads)
-            third-resource (<! (rest/post! listing payload))
-            resources (<! (rest/get listing {:per-page 1 :page 2}))
-            expected {:prev {:per-page "1"
-                             :page "1"}
-                      :next {:per-page "1"
-                             :page "3"}}
-            link (get-in resources [:headers :link])]
-        (is (= expected (meta link)))
         (done)))))
 
 ;; Async threading
