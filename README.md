@@ -102,6 +102,7 @@ If any step in the async sequence returns an instance of `Error`, that will be t
 
 ### Releases
 
+- 1.1.0 - `:link` header is parsed into a map
 - 1.0.0 - Full rewrite, see the [migration guide](docs/migration_guide_1.0.0.md)
     - Each resource type now populates the following response data:
         - `success`
