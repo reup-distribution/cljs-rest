@@ -121,9 +121,12 @@
 
 (def link-pattern
   "Matches a `link-value` according to https://tools.ietf.org/html/rfc5988#section-5,
-  capturing `URI-Reference` and a `rel` value for `link-param`, ignoring all other
-  `link-param` fields if present."
-  #"(?i)<(.*?)>(?:;\s*(?!rel)[^=]+=\".*?\")*;\s*rel=\"(.*?)\"(?:;\s*[^=]+=\".*?\")*")
+  capturing `URI-Reference`, capturing `link-param` for further processing."
+  #"<(.*?)>(.*?)(?=<|$)")
+
+(def rel-pattern
+  "Matches a `rel` `link-param`, capturing its value"
+  #"(?i);\s*rel=\"(.*?)\"")
 
 (defn parse-url-query-params [url]
   (let [uri (uri/parse url)
@@ -137,8 +140,9 @@
       (if (empty? matches)
           link
           (reduce
-            (fn [acc [_ url key-str]]
-              (let [k (keyword key-str)
+            (fn [acc [_ url link-params]]
+              (let [[_ rel] (re-find rel-pattern link-params)
+                    k (keyword rel)
                     params (parse-url-query-params url)
                     parsed {:url url}
                     with-params (if (empty? params)
