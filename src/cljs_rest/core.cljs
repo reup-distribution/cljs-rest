@@ -121,21 +121,21 @@
 (def link-pattern
   #"<(.*?)>; rel=\"(.*?)\"")
 
-(defn parse-link [headers]
-  (if-let [link (:link headers)]
-    (let [matches (re-seq link-pattern link)
-          link* (reduce
-                  (fn [acc [_ url key-str]]
-                    (assoc acc (keyword key-str) url))
-                  {}
-                  matches)]
-      (assoc headers :link link*))
-    headers))
+(defn expand-link [link]
+  (when link
+    (let [matches (re-seq link-pattern link)]
+      (if (empty? matches)
+          link
+          (reduce
+            (fn [acc [_ url key-str]]
+              (assoc acc (keyword key-str) url))
+            {}
+            matches)))))
 
 (defn expand-headers [headers]
   (-> headers
       with-keywords
-      parse-link))
+      (update :link expand-link)))
 
 (defn request
   ([url] (request url {}))
