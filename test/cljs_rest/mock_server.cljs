@@ -1,6 +1,7 @@
 (ns cljs-rest.mock-server
   (:require-macros [cljs.core.async.macros :refer [go]])
-  (:require [cljs-http.client :as http]
+  (:require [clojure.string :as string]
+            [cljs-http.client :as http]
             [cljs-http.util :refer [json-encode json-decode]]))
 
 (def routes
@@ -85,21 +86,49 @@
   (response {:body {:name "Entries"}}))
 
 (defn pagination-params [req]
-  (let [params (http/parse-query-params (:query-string req))]
-    {:per-page (int (:per-page params 10))
-     :page (int (:page params 1))}))
-
-(defn paginate [params entries]
-  (let [{:keys [per-page page]} params
+  (let [params (http/parse-query-params (:query-string req))
+        per-page (int (:per-page params 10))
+        page (int (:page params 1))
         skip (* per-page (dec page))]
-    (->> entries
+    {:per-page per-page
+     :page page
+     :skip skip}))
+
+(defn paginate [params items]
+  (let [{:keys [per-page page skip]} params]
+    (->> items
          (drop skip)
          (take per-page))))
 
+(defn pagination-url [base-url per-page page]
+  (str base-url "?" (http/generate-query-string {:per-page per-page :page page})))
+
+(defn link-header [links]
+  (string/join ", "
+    (reduce
+      (fn [acc [k url]]
+        (when url
+          (conj acc (str "<" url ">; rel=\"" (name k) "\""))))
+      []
+      links)))
+
+(defn pagination-headers [base-url params items]
+  (let [{:keys [per-page page skip]} params
+        total (count items)
+        prev (when (> skip 0)
+               (pagination-url base-url per-page (dec page)))
+        next (when (> total (+ skip per-page))
+               (pagination-url base-url per-page (inc page)))
+        link-header (link-header {:prev prev :next next})]
+    (when link-header
+      {"link" link-header})))
+
 (defmethod request [:get :entries] [req]
   (let [params (pagination-params req)
-        results (paginate params @entries)]
-    (response {:body results})))
+        items @entries]
+    (response
+      {:headers (pagination-headers (:uri req) params items)
+       :body (paginate params items)})))
 
 (defmethod request [:post :entries] [req]
   (let [data (json-decode (:body req))
