@@ -118,15 +118,35 @@
     m
     m))
 
+(def link-pattern
+  #"<(.*?)>; rel=\"(.*?)\"")
+
+(defn parse-link [headers]
+  (if-let [link (:link headers)]
+    (let [matches (re-seq link-pattern link)
+          link* (reduce
+                  (fn [acc [_ url key-str]]
+                    (assoc acc (keyword key-str) url))
+                  {}
+                  matches)]
+      (assoc headers :link link*))
+    headers))
+
+(defn expand-headers [headers]
+  (-> headers
+      with-keywords
+      parse-link))
+
 (defn request
   ([url] (request url {}))
   ([url opts]
     (go
       (let [opts* (request-options url opts)
-            response (async/<! (http/request opts*))]
-        (when-not (:success response)
-          (put-error! opts response))
-        (update response :headers with-keywords)))))
+            response (async/<! (http/request opts*))
+            response* (update response :headers expand-headers)]
+        (when-not (:success response*)
+          (put-error! opts response*))
+        response*))))
 
 ;; REST semantics
 
