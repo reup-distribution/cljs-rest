@@ -191,6 +191,17 @@
         (is (= expected data))
         (done)))))
 
+(deftest listing-parse-link-header
+  (async done
+    (go
+      (let [payload (first payloads)
+            third-resource (<! (rest/post! listing payload))
+            resources (<! (rest/get listing {:per-page 1 :page 2}))
+            expected {:prev "/entries/?per-page=1&page=1"
+                      :next "/entries/?per-page=1&page=3"}]
+        (is (= expected (get-in resources [:headers :link])))
+        (done)))))
+
 (deftest instance-read
   (async done
     (go
@@ -215,7 +226,7 @@
 (deftest instance-error
   (async done
     (go
-      (let [url (item-url 3)
+      (let [url (item-url 420)
             resource (rest/resource url)
             instance (<! (rest/get resource))]
         (is (= false (:success instance)))
@@ -225,7 +236,7 @@
 (deftest instance-error-retains-url
   (async done
     (go
-      (let [url (item-url 3)
+      (let [url (item-url 420)
             resource (rest/resource url)
             instance (<! (rest/get resource))]
         (is (= url (:url instance)))
@@ -299,7 +310,7 @@
                        listing
                        rest/get
                        :resources
-                       last
+                       second
                        (rest/put! payload)
                        :data))
             expected {:url (item-url 2)}]

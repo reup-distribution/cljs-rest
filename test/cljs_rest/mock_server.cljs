@@ -101,7 +101,8 @@
          (take per-page))))
 
 (defn pagination-url [base-url per-page page]
-  (str base-url "?" (http/generate-query-string {:per-page per-page :page page})))
+  ;; Hard-coded as a string for guaranteed order
+  (str base-url "?per-page=" per-page "&page=" page))
 
 (defn link-header [links]
   (string/join ", "
@@ -120,7 +121,7 @@
         next (when (> total (+ skip per-page))
                (pagination-url base-url per-page (inc page)))
         link-header (link-header {:prev prev :next next})]
-    (when link-header
+    (when-not (empty? link-header)
       {"link" link-header})))
 
 (defmethod request [:get :entries] [req]
