@@ -1,6 +1,6 @@
 # cljs-rest: A ClojureScript REST client
 
-`[cljs-rest "1.0.0"]`
+`[cljs-rest "1.1.0"]`
 
 A ClojureScript REST client, suitable for AJAX interaction with RESTful APIs.
 
