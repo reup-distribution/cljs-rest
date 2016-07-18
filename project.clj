@@ -8,9 +8,10 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/clojurescript "1.9.89" :scope "provided"]
                  [cljs-http "0.1.41"]]
-  :aliases {"test" ["run" "-m" "cljs-rest.test"]
+  :aliases {"test" ["cljsbuild" "test"]
             "cljsbuild" ["with-profile" "dev" "cljsbuild"]}
-  :profiles {:dev {:dependencies [[cheshire "5.5.0"]
+  :profiles {:dev {:jvm-opts ^:replace ["-Xmx2048m" "-server"]
+                   :dependencies [[cheshire "5.5.0"]
                                   [compojure "1.5.0"]
                                   [jumblerg/ring.middleware.cors "1.0.1"]
                                   [liberator "0.13"]
@@ -22,7 +23,10 @@
                                          :compiler {:output-to "target/cljsbuild/build.js"
                                                     :output-dir "target/cljsbuild"
                                                     :optimizations :whitespace
-                                                    :source-map "target/cljsbuild/build.js.map"}}]
+                                                    :source-map "target/cljsbuild/build.js.map"}
+                                         :notify-command ["phantomjs"
+                                                          "test/phantomjs_runner.js"
+                                                          "target/cljsbuild/build.js"]}]
                                :test-commands {"whitespace" ["phantomjs"
                                                              "test/phantomjs_runner.js"
                                                              "target/cljsbuild/build.js"]}}}})
