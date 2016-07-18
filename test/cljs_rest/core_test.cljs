@@ -99,7 +99,7 @@
 (deftest listing-read-params
   (async done
     (go
-      (let [resources (<! (rest/get listing {:empty "results"}))]
+      (let [resources (<! (rest/get listing {:per-page 0}))]
         (is (= (list) (:resources resources)))
         (done)))))
 
@@ -134,7 +134,7 @@
 (deftest listing-first-resource-empty-error
   (async done
     (go
-      (let [resource (<! (rest/first-resource listing {:empty "results"}))]
+      (let [resource (<! (rest/first-resource listing {:per-page 0}))]
         (is (= false (:success resource)))
         (is (= 404 (:status resource)))
         (done)))))
@@ -143,7 +143,7 @@
   (async done
     (go
       (let [error-chan (configure-error-chan!)
-            resources (<! (rest/first-resource listing {:empty "results"}))
+            resources (<! (rest/first-resource listing {:per-page 0}))
             error (<! error-chan)]
         (is (= false (:success error)))
         (is (= 404 (:status error)))
@@ -215,7 +215,7 @@
 (deftest instance-error
   (async done
     (go
-      (let [url (item-url 3)
+      (let [url (item-url 420)
             resource (rest/resource url)
             instance (<! (rest/get resource))]
         (is (= false (:success instance)))
@@ -225,7 +225,7 @@
 (deftest instance-error-retains-url
   (async done
     (go
-      (let [url (item-url 3)
+      (let [url (item-url 420)
             resource (rest/resource url)
             instance (<! (rest/get resource))]
         (is (= url (:url instance)))
@@ -289,6 +289,21 @@
         (is (= 404 (:status error)))
         (done)))))
 
+(deftest parse-link-header
+  (async done
+    (go
+      (let [payload (first payloads)
+            third-resource (<! (rest/post! listing payload))
+            resources (<! (rest/get listing {:per-page 1 :page 2}))
+            expected {:prev {:url "/entries/?per-page=1&page=1"
+                             :params {:per-page "1"
+                                      :page "1"}}
+                      :next {:url "/entries/?per-page=1&page=3"
+                             :params {:per-page "1"
+                                      :page "3"}}}]
+        (is (= expected (get-in resources [:headers :link])))
+        (done)))))
+
 ;; Async threading
 
 (deftest async-threading
@@ -299,7 +314,7 @@
                        listing
                        rest/get
                        :resources
-                       last
+                       second
                        (rest/put! payload)
                        :data))
             expected {:url (item-url 2)}]
