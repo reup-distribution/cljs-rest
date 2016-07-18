@@ -4,6 +4,7 @@
   (:require [clojure.string :as string]
             [cljs.core.async :as async]
             [cljs.core.async.impl.protocols :refer [ReadPort]]
+            [goog.Uri :as uri]
             [cljs-http.client :as http]))
 
 ;; Async helpers
@@ -118,15 +119,54 @@
     m
     m))
 
+(def link-pattern
+  "Matches a `link-value` according to https://tools.ietf.org/html/rfc5988#section-5,
+  capturing `URI-Reference`, capturing `link-param` for further processing."
+  #"<(.*?)>(.*?)(?=<|$)")
+
+(def rel-pattern
+  "Matches a `rel` `link-param`, capturing its value"
+  #"(?i);\s*rel=\"(.*?)\"")
+
+(defn parse-url-query-params [url]
+  (let [uri (uri/parse url)
+        query-data (.getQueryData uri)]
+    (when-not (.isEmpty query-data)
+      (http/parse-query-params (str query-data)))))
+
+(defn expand-link [link]
+  (when link
+    (let [matches (re-seq link-pattern link)]
+      (if (empty? matches)
+          link
+          (reduce
+            (fn [acc [_ url link-params]]
+              (let [[_ rel] (re-find rel-pattern link-params)
+                    k (keyword rel)
+                    params (parse-url-query-params url)
+                    parsed {:url url}
+                    with-params (if (empty? params)
+                                    parsed
+                                    (assoc parsed :params params))]
+                (assoc acc k with-params)))
+            {}
+            matches)))))
+
+(defn expand-headers [headers]
+  (-> headers
+      with-keywords
+      (update :link expand-link)))
+
 (defn request
   ([url] (request url {}))
   ([url opts]
     (go
       (let [opts* (request-options url opts)
-            response (async/<! (http/request opts*))]
-        (when-not (:success response)
-          (put-error! opts response))
-        (update response :headers with-keywords)))))
+            response (async/<! (http/request opts*))
+            response* (update response :headers expand-headers)]
+        (when-not (:success response*)
+          (put-error! opts response*))
+        response*))))
 
 ;; REST semantics
 

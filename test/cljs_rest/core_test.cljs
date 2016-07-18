@@ -4,20 +4,25 @@
   (:require [clojure.string :as string]
             [cljs.test :refer-macros [async deftest is use-fixtures]]
             [cljs.core.async :refer [<! timeout]]
-            [cljs-rest.core :as rest]))
+            [cljs-rest.core :as rest]
+            [cljs-rest.mock-server :refer [mock-request! restore-request!]]))
 
 (defonce default-config @rest/config)
 
 (use-fixtures :each
-  {:before (fn [] (rest/configure-format! :json))
-   :after (fn [] (reset! rest/config default-config))})
+  {:before (fn []
+             (rest/configure-format! :json)
+             (mock-request!))
+   :after (fn []
+            (reset! rest/config default-config)
+            (restore-request!))})
 
 (defn configure-error-chan! []
   (let [error-chan (timeout 1000)]
     (swap! rest/config assoc :error-chan error-chan)
     error-chan))
 
-(def listing-url "http://0.0.0.0:4000/entries/")
+(def listing-url "/entries/")
 
 (defn item-url [n]
   (str listing-url n "/"))
@@ -94,14 +99,14 @@
 (deftest listing-read-params
   (async done
     (go
-      (let [resources (<! (rest/get listing {:empty "results"}))]
+      (let [resources (<! (rest/get listing {:per-page 0}))]
         (is (= (list) (:resources resources)))
         (done)))))
 
 (deftest listing-error
   (async done
     (go
-      (let [listing (rest/resource-listing "http://localhost:4000/does-not-exist/")
+      (let [listing (rest/resource-listing "/does-not-exist/")
             resources (<! (rest/get listing))]
         (is (= false (:success resources)))
         (is (= 404 (:status resources)))
@@ -111,7 +116,7 @@
   (async done
     (go
       (let [error-chan (configure-error-chan!)
-            listing (rest/resource-listing "http://localhost:4000/does-not-exist/")
+            listing (rest/resource-listing "/does-not-exist/")
             resources (<! (rest/get listing))
             error (<! error-chan)]
         (is (= false (:success error)))
@@ -129,7 +134,7 @@
 (deftest listing-first-resource-empty-error
   (async done
     (go
-      (let [resource (<! (rest/first-resource listing {:empty "results"}))]
+      (let [resource (<! (rest/first-resource listing {:per-page 0}))]
         (is (= false (:success resource)))
         (is (= 404 (:status resource)))
         (done)))))
@@ -138,7 +143,7 @@
   (async done
     (go
       (let [error-chan (configure-error-chan!)
-            resources (<! (rest/first-resource listing {:empty "results"}))
+            resources (<! (rest/first-resource listing {:per-page 0}))
             error (<! error-chan)]
         (is (= false (:success error)))
         (is (= 404 (:status error)))
@@ -210,7 +215,7 @@
 (deftest instance-error
   (async done
     (go
-      (let [url (item-url 3)
+      (let [url (item-url 420)
             resource (rest/resource url)
             instance (<! (rest/get resource))]
         (is (= false (:success instance)))
@@ -220,7 +225,7 @@
 (deftest instance-error-retains-url
   (async done
     (go
-      (let [url (item-url 3)
+      (let [url (item-url 420)
             resource (rest/resource url)
             instance (<! (rest/get resource))]
         (is (= url (:url instance)))
@@ -237,19 +242,17 @@
         (is (= expected (:data updated)))
         (done)))))
 
-;; PhantomJS does not send the request body for PATCH:
-;; https://github.com/ariya/phantomjs/issues/11384
-; (deftest instance-patch
-;   (async done
-;     (go
-;       (let [url (item-url 1)
-;             resource (rest/resource url)
-;             existing (<! (rest/get resource))
-;             payload {:a "c"}
-;             patched (<! (rest/patch! resource payload))
-;             expected (merge (:data existing) payload {:url url})]
-;         (is (= expected (:data patched)))
-;         (done)))))
+(deftest instance-patch
+  (async done
+    (go
+      (let [url (item-url 1)
+            resource (rest/resource url)
+            existing (<! (rest/get resource))
+            payload {:a "c"}
+            patched (<! (rest/patch! resource payload))
+            expected (merge (:data existing) payload {:url url})]
+        (is (= expected (:data patched)))
+        (done)))))
 
 (deftest instance-delete
   (async done
@@ -279,11 +282,26 @@
   (async done
     (go
       (let [error-chan (timeout 1000)
-            listing (rest/resource-listing "http://localhost:4000/does-not-exist/"
+            listing (rest/resource-listing "/does-not-exist/"
                       :opts {:error-chan error-chan})
             resources (<! (rest/get listing))
             error (<! error-chan)]
         (is (= 404 (:status error)))
+        (done)))))
+
+(deftest parse-link-header
+  (async done
+    (go
+      (let [payload (first payloads)
+            third-resource (<! (rest/post! listing payload))
+            resources (<! (rest/get listing {:per-page 1 :page 2}))
+            expected {:prev {:url "/entries/?per-page=1&page=1"
+                             :params {:per-page "1"
+                                      :page "1"}}
+                      :next {:url "/entries/?per-page=1&page=3"
+                             :params {:per-page "1"
+                                      :page "3"}}}]
+        (is (= expected (get-in resources [:headers :link])))
         (done)))))
 
 ;; Async threading
@@ -296,7 +314,7 @@
                        listing
                        rest/get
                        :resources
-                       last
+                       second
                        (rest/put! payload)
                        :data))
             expected {:url (item-url 2)}]
